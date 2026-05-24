@@ -1,9 +1,6 @@
 # Hermes Local Stack
 
-This repository combines two things that were configured and verified together on this machine:
-
-1. a local Hermes Agent setup backed by `llama.cpp`
-2. a React + Vite flight simulator app in the root `src/` tree
+This repository now focuses on the local Hermes stack around `llama.cpp`, LiteLLM, and Claude Code bridging on this machine.
 
 The important local coding path is now fully wired and validated:
 
@@ -14,9 +11,9 @@ The important local coding path is now fully wired and validated:
 - Hermes launch scripts and config for a local `llama.cpp` server
 - a local LiteLLM proxy config for Claude Code compatibility
 - a combined starter for `llama.cpp + LiteLLM + Hermes`
-- the current React/Vite app in the root `src/` directory
+- model-specific runtime notes under `docs/models/`
 
-The old nested `react-sim/` app was a duplicate experiment and has been removed from the tracked project.
+The old nested `react-sim/` app is gone, and the root `src/` tree is now intentionally ignored as machine-local frontend work.
 
 ## Quick start
 
@@ -48,25 +45,6 @@ $env:HERMES_USE_CLAUDE_LITELLM = "1"
 ./start_hermes.bat
 ```
 
-## Frontend development
-
-The active frontend lives in the root `src/` directory and is wired through the root `index.html`, `package.json`, and `vite.config.js`.
-
-Run it with:
-
-```powershell
-npm install
-npm run dev
-```
-
-Other useful commands:
-
-```powershell
-npm run build
-npm run lint
-npm run preview
-```
-
 ## Key files
 
 - `hermes_config.yaml`: Hermes provider and model config
@@ -75,6 +53,7 @@ npm run preview
 - `start_litellm.ps1`: starts LiteLLM in WSL for the local bridge
 - `start_hermes_claude_local.bat`: combined local starter
 - `HERMES_README.md`: more detailed operator documentation for the Hermes setup
+- `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`: model-specific llama.cpp tuning profile for the current Qwen setup
 
 ## Local model assumptions
 
@@ -93,6 +72,14 @@ ANTHROPIC_MODEL=qwen-local-anthropic
 ANTHROPIC_CUSTOM_MODEL_OPTION=qwen-local-anthropic
 ```
 
+For Hermes-triggered local Claude Code runs, prefer the wrapper:
+
+```bash
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 1
+```
+
+That wrapper first runs `./ensure_claude_local_bridge.sh`, which starts LiteLLM on demand if the bridge is not already up.
+
 That path was validated end to end with:
 
 - a minimal `Reply with exactly OK.` task
@@ -102,4 +89,4 @@ That path was validated end to end with:
 
 - Hermes itself still talks directly to `llama.cpp`.
 - Claude Code uses LiteLLM because the local `llama.cpp` Anthropic compatibility works reliably through that bridge.
-- The root `src/` app is still active. Removing it would break the current Vite project setup.
+- The root `src/` directory is ignored on purpose and no longer part of the tracked repo state.

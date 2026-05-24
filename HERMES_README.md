@@ -44,6 +44,8 @@ Die Konfiguration verwendet **llama.cpp** als lokalen LLM-Provider:
 
 **Modellwechsel:** Aendere fuer einen anderen GGUF in `hermes_config.yaml` den physischen Dateipfad unter `model.path` und den sichtbaren Alias unter `model.default`. `start_llamacpp.ps1` liest den Modellpfad jetzt direkt aus der Config; ein PowerShell-Edit ist dafuer nicht mehr noetig.
 
+**Modellprofil:** Die konkreten llama.cpp-Tuning-Notizen fuer das aktuell verwendete Qwen-Modell stehen in `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`. Dort sind sowohl die offiziellen Qwen/Unsloth-Empfehlungen als auch die lokal validierten Findings zu Kontextfenster, Flash Attention und MTP festgehalten.
+
 ### Claude Code via LiteLLM (verifizierter Pfad)
 
 Der auf diesem System verifizierte lokale Claude-Code-Pfad ist:
@@ -65,15 +67,12 @@ Beispiel:
 
 ```bash
 cd /mnt/c/Users/KaiFe/Desktop/react-sim
-env \
-	ANTHROPIC_BASE_URL=http://127.0.0.1:4000 \
-	ANTHROPIC_AUTH_TOKEN=sk-hermes-local \
-	ANTHROPIC_MODEL=qwen-local-anthropic \
-	ANTHROPIC_CUSTOM_MODEL_OPTION=qwen-local-anthropic \
-	claude -p 'Reply with exactly OK.' --output-format json --max-turns 1
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 1
 ```
 
 Der Lauf gilt nur dann als lokal verifiziert, wenn im JSON-Output `modelUsage.qwen-local-anthropic` erscheint.
+
+`claude_local.sh` fuehrt davor automatisch `ensure_claude_local_bridge.sh` aus. Wenn LiteLLM auf `127.0.0.1:4000` nicht laeuft, startet das Skript den lokalen Proxy in WSL selbststaendig und wartet auf die Bereitschaft.
 
 Wichtig: Fuer Claude Code darf LiteLLM hier **nicht** als `openai/...`-Downstream auf llama.cpp zeigen, weil LiteLLM Anthropic-Requests sonst intern auf OpenAI `responses` bridged. Das Repo nutzt deshalb bewusst `anthropic/Qwen3.6-27B-MTP GGUF` gegen `http://127.0.0.1:8080`.
 
