@@ -1,0 +1,105 @@
+#!/bin/bash
+# Hermes Gateway Launcher (Telegram + andere Plattformen)
+# Laeuft im Hintergrund-Fenster, gestartet von start_hermes.bat
+
+set -e
+
+CONFIG="/root/.hermes/config.yaml"
+LOCAL_CONFIG="/mnt/c/Users/KaiFe/Desktop/react-sim/hermes_config.yaml"
+
+configure_claude_code_bridge() {
+    local enabled="${HERMES_CLAUDE_USE_LITELLM:-0}"
+
+    case "${enabled}" in
+        1|true|TRUE|yes|YES|on|ON)
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    local bridge_url="${HERMES_CLAUDE_BASE_URL:-http://127.0.0.1:4000}"
+    local bridge_token="${HERMES_CLAUDE_AUTH_TOKEN:-sk-hermes-local}"
+    local bridge_model="${HERMES_CLAUDE_MODEL:-qwen-local-anthropic}"
+
+    bridge_url="${bridge_url%/}"
+
+    echo -n "LiteLLM Pruefung (${bridge_url}): "
+    if curl -s --connect-timeout 3 -H "Authorization: Bearer ${bridge_token}" "${bridge_url}/v1/models" > /dev/null 2>&1; then
+        echo "OK"
+    else
+        echo "NICHT ERREICHBAR"
+        echo ""
+        echo "Bitte LiteLLM lokal starten, bevor Hermes Claude Code mit dem lokalen Gateway nutzen soll."
+        exit 1
+    fi
+
+    export ANTHROPIC_BASE_URL="${bridge_url}"
+    export ANTHROPIC_AUTH_TOKEN="${bridge_token}"
+    export ANTHROPIC_MODEL="${bridge_model}"
+    export ANTHROPIC_CUSTOM_MODEL_OPTION="${bridge_model}"
+
+    echo "Claude Code Gateway: ${ANTHROPIC_MODEL} via ${ANTHROPIC_BASE_URL}"
+    echo ""
+}
+
+extract_model_value() {
+    local key="$1"
+
+    awk -v wanted="$key" '
+        /^model:[[:space:]]*$/ { in_model=1; next }
+        in_model && /^[^[:space:]]/ { in_model=0 }
+        in_model && $1 == wanted ":" {
+            value = $0
+            sub(/^[^:]+:[[:space:]]*/, "", value)
+            sub(/[[:space:]]+#.*$/, "", value)
+            gsub(/^"/, "", value)
+            gsub(/"$/, "", value)
+            print value
+            exit
+        }
+    ' "$CONFIG"
+}
+
+# Frische Config aus dem Repo spiegeln
+if [ -f "$LOCAL_CONFIG" ]; then
+    mkdir -p "$(dirname "$CONFIG")"
+    cp "$LOCAL_CONFIG" "$CONFIG"
+fi
+
+API_BASE_URL="$(extract_model_value base_url)"
+MODEL_NAME="$(extract_model_value default)"
+
+if [ -z "$API_BASE_URL" ]; then
+    API_BASE_URL="http://127.0.0.1:8080/v1"
+fi
+
+if [ -z "$MODEL_NAME" ]; then
+    MODEL_NAME="Qwen3.6-27B-MTP GGUF"
+fi
+
+API_BASE_URL="${API_BASE_URL%/}"
+
+echo -n "llama.cpp Pruefung (${API_BASE_URL}): "
+if curl -s --connect-timeout 3 "${API_BASE_URL}/models" > /dev/null 2>&1; then
+    echo "OK"
+else
+    echo "NICHT ERREICHBAR"
+    echo ""
+    echo "Bitte llama.cpp als OpenAI-kompatiblen Server starten."
+    echo "Empfohlen: --alias \"${MODEL_NAME}\" --ctx-size 65536"
+    exit 1
+fi
+
+echo "========================================"
+echo "  Hermes Gateway (Telegram Integration)"
+echo "  Modell: ${MODEL_NAME}"
+echo "========================================"
+echo ""
+
+configure_claude_code_bridge
+
+cd /root/.hermes/hermes-agent
+source venv/bin/activate
+#exec hermes
+exec hermes gateway

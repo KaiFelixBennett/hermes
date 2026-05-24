@@ -1,0 +1,341 @@
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSCommandPath
+$configPath = Join-Path $repoRoot 'hermes_config.yaml'
+$llamaToolsRoot = Join-Path $repoRoot 'tools\llama.cpp'
+$chatTemplatePath = Join-Path $repoRoot 'tools\llama.cpp\templates\Qwen3.5-4B.jinja'
+
+function Get-HermesModelConfigValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Key
+    )
+
+    if (-not (Test-Path $configPath)) {
+        return $null
+    }
+
+    $inModelBlock = $false
+    foreach ($line in Get-Content $configPath) {
+        if ($line -match '^model:\s*$') {
+            $inModelBlock = $true
+            continue
+        }
+
+        if ($inModelBlock -and $line -match '^[^\s]') {
+            break
+        }
+
+        if ($inModelBlock -and $line -match ('^\s*' + [regex]::Escape($Key) + ':\s*"?([^"#]+)')) {
+            return $matches[1].Trim()
+        }
+    }
+
+    return $null
+}
+
+function Get-FirstNonEmptyValue {
+    param(
+        [AllowNull()]
+        [object[]]$Values = @()
+    )
+
+    foreach ($value in $Values) {
+        if ($null -ne $value) {
+            $text = [string]$value
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                return $text.Trim()
+            }
+        }
+    }
+
+    return $null
+}
+
+function Get-LatestLlamaBinaryDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern
+    )
+
+    return Get-ChildItem -Path $llamaToolsRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like $Pattern } |
+        Sort-Object @(
+            @{ Expression = {
+                    if ($_.Name -match '^b(\d+)') {
+                        [int]$matches[1]
+                    } else {
+                        -1
+                    }
+                }; Descending = $true },
+            @{ Expression = { $_.Name }; Descending = $true }
+        ) |
+        Select-Object -First 1
+}
+
+function Resolve-LlamaServerPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Backend,
+
+        [string]$BinaryDir
+    )
+
+    if (-not (Test-Path $llamaToolsRoot)) {
+        throw "llama.cpp Verzeichnis nicht gefunden: $llamaToolsRoot"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($BinaryDir)) {
+        $candidateServer = Join-Path (Join-Path $llamaToolsRoot $BinaryDir) 'llama-server.exe'
+        if (Test-Path $candidateServer) {
+            return $candidateServer
+        }
+
+        throw "llama-server.exe nicht gefunden im konfigurierten binary_dir: $candidateServer"
+    }
+
+    $patterns = switch ($Backend.Trim().ToLowerInvariant()) {
+        'auto' { @('b*-win-hip-radeon-x64', 'b*-win-vulkan-x64', 'b*-win-cuda-13.*-x64', 'b*-win-cuda-12.*-x64', 'b*-win-sycl-x64', 'b*-win-cpu-x64') }
+        'hip' { @('b*-win-hip-radeon-x64') }
+        'vulkan' { @('b*-win-vulkan-x64') }
+        'cuda' { @('b*-win-cuda-13.*-x64', 'b*-win-cuda-12.*-x64') }
+        'cuda13' { @('b*-win-cuda-13.*-x64') }
+        'cuda12' { @('b*-win-cuda-12.*-x64') }
+        'sycl' { @('b*-win-sycl-x64') }
+        'cpu' { @('b*-win-cpu-x64') }
+        default {
+            throw "Unbekannter backend Wert '$Backend'. Erlaubt: auto, hip, vulkan, cuda, cuda12, cuda13, sycl, cpu."
+        }
+    }
+
+    foreach ($pattern in $patterns) {
+        $candidate = Get-LatestLlamaBinaryDirectory -Pattern $pattern
+        if ($candidate) {
+            return (Join-Path $candidate.FullName 'llama-server.exe')
+        }
+    }
+
+    throw "Keine installierte llama.cpp-Binary fuer backend '$Backend' gefunden unter $llamaToolsRoot. Installiere das passende Release oder setze model.binary_dir."
+}
+
+function Get-LlamaDeviceInfo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ServerPath
+    )
+
+    $deviceOutput = cmd /c ('"' + $ServerPath + '" --list-devices 2>&1') | Out-String
+    $deviceName = $null
+
+    foreach ($line in $deviceOutput -split "`r?`n") {
+        if ($line -match '^\s*([A-Za-z0-9._:-]+)\s*:') {
+            $deviceName = $matches[1]
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        Name = $deviceName
+        Output = $deviceOutput
+    }
+}
+
+$modelPath = Get-FirstNonEmptyValue -Values @(
+    $env:HERMES_LLAMACPP_MODEL_PATH,
+    (Get-HermesModelConfigValue -Key 'path')
+)
+$parallelSlots = '1'
+$flashAttention = 'on'
+$reasoningMode = 'off'
+$reasoningBudget = '2048'
+$reasoningBudgetMessage = 'Reasoning budget exhausted. Provide the best possible final answer now.'
+$modelAlias = Get-HermesModelConfigValue -Key 'default'
+$baseUrl = Get-HermesModelConfigValue -Key 'base_url'
+$contextLength = Get-HermesModelConfigValue -Key 'context_length'
+$temperature = Get-HermesModelConfigValue -Key 'temperature'
+$topP = Get-HermesModelConfigValue -Key 'top_p'
+$topK = Get-HermesModelConfigValue -Key 'top_k'
+$minP = Get-HermesModelConfigValue -Key 'min_p'
+$presencePenalty = Get-HermesModelConfigValue -Key 'presence_penalty'
+$repeatPenalty = Get-HermesModelConfigValue -Key 'repeat_penalty'
+$speculativeType = Get-HermesModelConfigValue -Key 'speculative_type'
+$speculativeDraftTokens = Get-HermesModelConfigValue -Key 'speculative_draft_tokens'
+$requestedBackend = Get-FirstNonEmptyValue -Values @(
+    $env:HERMES_LLAMACPP_BACKEND,
+    (Get-HermesModelConfigValue -Key 'backend')
+)
+$binaryDirOverride = Get-FirstNonEmptyValue -Values @(
+    $env:HERMES_LLAMACPP_BINARY_DIR,
+    (Get-HermesModelConfigValue -Key 'binary_dir')
+)
+
+if ([string]::IsNullOrWhiteSpace($modelAlias)) {
+    $modelAlias = 'Qwen3.6-27B-MTP GGUF'
+}
+
+if ([string]::IsNullOrWhiteSpace($modelPath)) {
+    throw "Modellpfad fehlt. Setze model.path in hermes_config.yaml oder HERMES_LLAMACPP_MODEL_PATH."
+}
+
+if ([string]::IsNullOrWhiteSpace($baseUrl)) {
+    $baseUrl = 'http://127.0.0.1:8080/v1'
+}
+
+if ([string]::IsNullOrWhiteSpace($contextLength)) {
+    $contextLength = '131072'
+}
+
+if ([string]::IsNullOrWhiteSpace($requestedBackend)) {
+    $requestedBackend = 'vulkan'
+}
+
+$serverPath = Resolve-LlamaServerPath -Backend $requestedBackend -BinaryDir $binaryDirOverride
+
+try {
+    $uri = [Uri]$baseUrl
+} catch {
+    throw "Ungueltige base_url in hermes_config.yaml: $baseUrl"
+}
+
+$hostIp = $uri.Host
+$port = $uri.Port
+
+if (-not (Test-Path $serverPath)) {
+    throw "llama-server.exe nicht gefunden: $serverPath"
+}
+
+if (-not (Test-Path $modelPath)) {
+    throw "GGUF-Modell nicht gefunden: $modelPath"
+}
+
+if (-not (Test-Path $chatTemplatePath)) {
+    throw "Chat-Template nicht gefunden: $chatTemplatePath"
+}
+
+$deviceInfo = Get-LlamaDeviceInfo -ServerPath $serverPath
+$deviceName = $deviceInfo.Name
+
+$arguments = @(
+    '--host', $hostIp,
+    '--port', "$port",
+    '--model', $modelPath,
+    '--alias', $modelAlias,
+    '--ctx-size', "$contextLength",
+    '--chat-template-file', $chatTemplatePath,
+    '--parallel', $parallelSlots,
+    '--flash-attn', $flashAttention,
+    '--reasoning', $reasoningMode,
+    '--jinja'
+)
+
+if (-not [string]::IsNullOrWhiteSpace($temperature)) {
+    $arguments += @('--temp', "$temperature")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($topP)) {
+    $arguments += @('--top-p', "$topP")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($topK)) {
+    $arguments += @('--top-k', "$topK")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($minP)) {
+    $arguments += @('--min-p', "$minP")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($presencePenalty)) {
+    $arguments += @('--presence-penalty', "$presencePenalty")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($repeatPenalty)) {
+    $arguments += @('--repeat-penalty', "$repeatPenalty")
+}
+
+if (
+    -not [string]::IsNullOrWhiteSpace($speculativeType) -and
+    $speculativeType.Trim().ToLowerInvariant() -ne 'none'
+) {
+    $arguments += @('--spec-type', "$speculativeType")
+}
+
+if (-not [string]::IsNullOrWhiteSpace($speculativeDraftTokens)) {
+    $arguments += @('--spec-draft-n-max', "$speculativeDraftTokens")
+}
+
+if ($deviceName) {
+    $arguments += @('--gpu-layers', 'all')
+}
+
+if ($reasoningMode -ne 'off') {
+    $arguments += @(
+        '--reasoning-budget', $reasoningBudget,
+        '--reasoning-budget-message', $reasoningBudgetMessage
+    )
+}
+
+if ($deviceName) {
+    $arguments += @('--device', $deviceName)
+}
+
+Write-Host ''
+Write-Host '========================================'
+Write-Host '  llama.cpp Server'
+Write-Host '========================================'
+Write-Host ("Backend: {0}" -f $requestedBackend)
+Write-Host ("Binary : {0}" -f $serverPath)
+Write-Host ("Model  : {0}" -f $modelPath)
+Write-Host ("Alias  : {0}" -f $modelAlias)
+Write-Host ("API    : {0}" -f $baseUrl)
+Write-Host ("Ctx    : {0}" -f $contextLength)
+Write-Host ("Tpl    : {0}" -f $chatTemplatePath)
+Write-Host ("Slots  : {0}" -f $parallelSlots)
+Write-Host ("Flash  : {0}" -f $flashAttention)
+if (
+    -not [string]::IsNullOrWhiteSpace($temperature) -or
+    -not [string]::IsNullOrWhiteSpace($topP) -or
+    -not [string]::IsNullOrWhiteSpace($topK) -or
+    -not [string]::IsNullOrWhiteSpace($minP) -or
+    -not [string]::IsNullOrWhiteSpace($presencePenalty) -or
+    -not [string]::IsNullOrWhiteSpace($repeatPenalty)
+) {
+    Write-Host (
+        "Sample : temp={0}, top_p={1}, top_k={2}, min_p={3}, presence={4}, repeat={5}" -f
+        $temperature,
+        $topP,
+        $topK,
+        $minP,
+        $presencePenalty,
+        $repeatPenalty
+    )
+}
+if (
+    -not [string]::IsNullOrWhiteSpace($speculativeType) -and
+    $speculativeType.Trim().ToLowerInvariant() -ne 'none'
+) {
+    if (-not [string]::IsNullOrWhiteSpace($speculativeDraftTokens)) {
+        Write-Host ("Spec   : {0} (draft tokens {1})" -f $speculativeType, $speculativeDraftTokens)
+    } else {
+        Write-Host ("Spec   : {0}" -f $speculativeType)
+    }
+}
+if ($reasoningMode -eq 'off') {
+    Write-Host ("Think  : {0}" -f $reasoningMode)
+} else {
+    Write-Host ("Think  : {0} (budget {1})" -f $reasoningMode, $reasoningBudget)
+}
+if ($deviceName) {
+    Write-Host ("Device : {0}" -f $deviceName)
+} else {
+    Write-Host 'Device : auto'
+}
+Write-Host ''
+Write-Host 'Hinweis: Es wird ausschliesslich das exakte MTP-GGUF verwendet.'
+Write-Host ''
+
+Push-Location (Split-Path -Parent $serverPath)
+try {
+    & $serverPath @arguments
+} finally {
+    Pop-Location
+}
