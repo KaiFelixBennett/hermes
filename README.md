@@ -1,37 +1,62 @@
 # Hermes Local Stack
 
-This repository now focuses on the local Hermes stack around `llama.cpp`, LiteLLM, and Claude Code bridging on this machine.
+This repository is a practical reference setup for running Hermes locally with `llama.cpp`, plus a verified Claude Code bridge through LiteLLM.
 
-The important local coding path is now fully wired and validated:
+The core path looks like this:
+
+`Hermes -> llama.cpp`
+
+and for local Claude Code tasks:
 
 `Hermes -> claude-code skill -> Claude Code -> LiteLLM -> llama.cpp`
 
-## What is in this repo
+## Prerequisites
 
-- Hermes launch scripts and config for a local `llama.cpp` server
-- a local LiteLLM proxy config for Claude Code compatibility
-- a combined starter for `llama.cpp + LiteLLM + Hermes`
-- model-specific runtime notes under `docs/models/`
+Before using this setup, you should already have:
 
-The old nested `react-sim/` app is gone, and the root `src/` tree is now intentionally ignored as machine-local frontend work.
+- Windows with PowerShell
+- WSL2 with an Ubuntu distro
+- Hermes installed in WSL
+- `claude` CLI installed in WSL
+- a local GGUF model available on disk
+- a working `llama.cpp` Windows binary
 
-## Quick start
+This repo gives you the wiring, launch scripts, and tested configuration. It does not ship the model weights or the `llama.cpp` binaries themselves.
 
-### Hermes only
+## What You Get
+
+- Windows launch scripts for `llama.cpp`
+- Hermes config for a local OpenAI-compatible provider
+- a LiteLLM proxy config that makes Claude Code work against local `llama.cpp`
+- wrapper scripts that self-heal the Claude Code bridge when LiteLLM is down
+- model-specific tuning notes under `docs/models/`
+
+## Who This Is For
+
+Use this repo if you want one of these outcomes:
+
+- run Hermes locally against `llama.cpp`
+- test Claude Code against a local model instead of the Anthropic API
+- keep the working launch scripts and config in one place
+- reuse the setup later on another machine with only a few machine-specific changes
+
+## Quick Start
+
+### Option 1: Hermes only
 
 ```powershell
 ./start_hermes.bat
 ```
 
-This keeps Hermes on its direct `llama.cpp` path.
+Use this when Hermes should talk directly to `llama.cpp` and you do not need Claude Code in the same run.
 
-### Hermes plus local Claude Code bridge
+### Option 2: Hermes plus local Claude Code bridge
 
 ```powershell
 ./start_hermes_claude_local.bat
 ```
 
-This start path:
+This path:
 
 1. checks or starts `llama.cpp`
 2. checks or starts LiteLLM on `127.0.0.1:4000`
@@ -45,25 +70,39 @@ $env:HERMES_USE_CLAUDE_LITELLM = "1"
 ./start_hermes.bat
 ```
 
-## Key files
+### Option 3: Local Claude Code check without Hermes
 
-- `hermes_config.yaml`: Hermes provider and model config
-- `start_llamacpp.ps1`: starts the local `llama.cpp` server from repo config
-- `litellm.proxy.yaml`: Claude Code bridge config for LiteLLM
-- `start_litellm.ps1`: starts LiteLLM in WSL for the local bridge
-- `start_hermes_claude_local.bat`: combined local starter
-- `HERMES_README.md`: more detailed operator documentation for the Hermes setup
-- `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`: model-specific llama.cpp tuning profile for the current Qwen setup
+```bash
+cd /mnt/c/Users/KaiFe/Desktop/react-sim
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 5
+```
 
-## Local model assumptions
+That wrapper first runs `./ensure_claude_local_bridge.sh`, which starts LiteLLM on demand if the bridge is not already up.
 
-This repo does not contain the GGUF model or the local Windows `llama.cpp` binaries.
+Treat the run as locally verified only when the JSON output contains `modelUsage.qwen-local-anthropic`.
 
-Those stay machine-local and are referenced from config or started from ignored local tooling paths. The repository only keeps the scripts, config, and template needed to reproduce the setup.
+## Architecture
 
-## Validated local Claude Code path
+```mermaid
+flowchart LR
+	U[User] --> H[Hermes]
+	H --> L1[llama.cpp]
+	H --> S[claude-code skill]
+	S --> C[Claude Code]
+	C --> P[LiteLLM]
+	P --> L2[llama.cpp]
+```
 
-The verified Claude Code environment for this repo is:
+Read it like this:
+
+- normal Hermes chat goes straight to `llama.cpp`
+- Claude Code tasks go through the `claude-code` skill
+- local Claude Code runs are bridged through LiteLLM
+- LiteLLM is the compatibility layer that makes Claude Code work reliably with the local model setup
+
+## Current Verified Defaults
+
+The currently verified Claude Code bridge environment is:
 
 ```text
 ANTHROPIC_BASE_URL=http://127.0.0.1:4000
@@ -72,21 +111,59 @@ ANTHROPIC_MODEL=qwen-local-anthropic
 ANTHROPIC_CUSTOM_MODEL_OPTION=qwen-local-anthropic
 ```
 
-For Hermes-triggered local Claude Code runs, prefer the wrapper:
+The current local model profile is documented in:
 
-```bash
-./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 1
-```
+- `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`
 
-That wrapper first runs `./ensure_claude_local_bridge.sh`, which starts LiteLLM on demand if the bridge is not already up.
+That file captures:
 
-That path was validated end to end with:
+- the currently validated context window
+- MTP and speculative decoding decisions
+- flash-attention usage
+- the local sampling profile
+- when MTP helped and when reducing retained context mattered more
 
-- a minimal `Reply with exactly OK.` task
-- a second Claude Code task that used Bash tool execution successfully
+## Files That Matter
 
-## Notes
+- `hermes_config.yaml`: main Hermes provider and model config
+- `start_llamacpp.ps1`: starts `llama.cpp` from repo config
+- `start_litellm.ps1`: starts LiteLLM in WSL for the Claude bridge
+- `claude_local.sh`: standard local Claude Code entry point
+- `ensure_claude_local_bridge.sh`: on-demand LiteLLM self-healing wrapper
+- `litellm.proxy.yaml`: LiteLLM bridge config
+- `start_hermes_claude_local.bat`: combined Hermes + Claude Code starter
+- `HERMES_README.md`: deeper operator notes for this setup
 
-- Hermes itself still talks directly to `llama.cpp`.
-- Claude Code uses LiteLLM because the local `llama.cpp` Anthropic compatibility works reliably through that bridge.
-- The root `src/` directory is ignored on purpose and no longer part of the tracked repo state.
+## What You Need To Adapt On Another Machine
+
+This repo does not ship the GGUF model or the local Windows `llama.cpp` binaries.
+
+If you reuse this setup elsewhere, usually only these parts need to change:
+
+1. `model.path` in `hermes_config.yaml`
+2. the installed `llama.cpp` backend and binary folder
+3. any machine-specific paths to GGUFs or tools
+4. optional backend tuning for your GPU
+
+The overall architecture can stay the same.
+
+## Why LiteLLM Is In The Middle
+
+Hermes itself talks directly to `llama.cpp`.
+
+Claude Code does not use the direct path here. The validated local route is LiteLLM in the middle, because that is the path that reliably matches Claude Code's Anthropic-style API expectations for this setup.
+
+In short:
+
+- Hermes -> direct `llama.cpp`
+- Claude Code -> LiteLLM -> `llama.cpp`
+
+## Suggested Next Split
+
+If this README is later shared more broadly, the clean next step would be:
+
+1. keep this file as the fast-start overview
+2. move machine-specific deep details into `HERMES_README.md`
+3. keep per-model tuning in `docs/models/`
+
+That gives you one short public-facing entry point and separate deep-dive docs for operators and model tuning.

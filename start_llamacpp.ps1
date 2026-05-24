@@ -26,8 +26,20 @@ function Get-HermesModelConfigValue {
             break
         }
 
-        if ($inModelBlock -and $line -match ('^\s*' + [regex]::Escape($Key) + ':\s*"?([^"#]+)')) {
-            return $matches[1].Trim()
+        if ($inModelBlock -and $line -match ('^\s*' + [regex]::Escape($Key) + ':\s*(.+?)\s*$')) {
+            $value = $matches[1]
+            $value = $value -replace '\s+#.*$', ''
+            $value = $value.Trim()
+
+            if ($value.Length -ge 2) {
+                $firstChar = $value[0]
+                $lastChar = $value[$value.Length - 1]
+                if (($firstChar -eq '"' -and $lastChar -eq '"') -or ($firstChar -eq "'" -and $lastChar -eq "'")) {
+                    $value = $value.Substring(1, $value.Length - 2)
+                }
+            }
+
+            return $value.Trim()
         }
     }
 
