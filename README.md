@@ -10,6 +10,10 @@ and for local Claude Code tasks:
 
 `Hermes -> claude-code skill -> Claude Code -> LiteLLM -> llama.cpp`
 
+<p align="center">
+  <img src="images/readme-hero-hybrid-stack.png" alt="Illustration of the hybrid Hermes, Claude Code, LiteLLM, and llama.cpp setup" width="980" />
+</p>
+
 ## Prerequisites
 
 Before using this setup, you should already have:
@@ -30,6 +34,39 @@ This repo gives you the wiring, launch scripts, and tested configuration. It doe
 - a LiteLLM proxy config that makes Claude Code work against local `llama.cpp`
 - wrapper scripts that self-heal the Claude Code bridge when LiteLLM is down
 - model-specific tuning notes under `docs/models/`
+
+## Why This Setup Makes Sense
+
+At first glance, the architecture looks more complicated than just pointing everything straight at one local model. In practice, the split is what makes the system understandable and stable.
+
+### Why Hermes talks directly to `llama.cpp`
+
+Hermes itself already works well with a direct local provider.
+
+That gives you:
+
+- fewer moving parts for normal Hermes conversations
+- lower overhead for day-to-day local usage
+- simpler debugging when the base model path is the thing you want to test
+- a clean mental model: Hermes is your main agent, `llama.cpp` is its local brain
+
+### Why Claude Code does **not** go direct here
+
+Claude Code expects Anthropic-style behavior and is much pickier than Hermes about API compatibility.
+
+That is why the local Claude Code path uses LiteLLM in the middle:
+
+- LiteLLM acts as the compatibility layer
+- Claude Code gets the API shape it expects
+- `llama.cpp` can stay your local inference engine
+- the wrapper scripts can auto-heal the bridge when LiteLLM is not already running
+
+So the setup is intentionally hybrid:
+
+- Hermes -> direct `llama.cpp`
+- Claude Code -> LiteLLM -> `llama.cpp`
+
+That split is the part that makes the whole system practical instead of fragile.
 
 ## Who This Is For
 
@@ -81,16 +118,24 @@ That wrapper first runs `./ensure_claude_local_bridge.sh`, which starts LiteLLM 
 
 Treat the run as locally verified only when the JSON output contains `modelUsage.qwen-local-anthropic`.
 
+## What This Looks Like In Practice
+
+This is the practical user flow the setup is built for: Hermes inspects the current state, switches into the `claude-code` skill when deeper coding work is needed, and then delegates the coding task through the local Claude Code bridge.
+
+<p align="center">
+  <img src="images/calling-claude-code-skill-virelia.png" alt="Telegram screenshot showing Hermes loading the claude-code skill and delegating work to Claude Code" width="760" />
+</p>
+
 ## Architecture
 
 ```mermaid
 flowchart LR
-	U[User] --> H[Hermes]
-	H --> L1[llama.cpp]
-	H --> S[claude-code skill]
-	S --> C[Claude Code]
-	C --> P[LiteLLM]
-	P --> L2[llama.cpp]
+  U[User] --> H[Hermes]
+  H --> L1[llama.cpp]
+  H --> S[claude-code skill]
+  S --> C[Claude Code]
+  C --> P[LiteLLM]
+  P --> L2[llama.cpp]
 ```
 
 Read it like this:
@@ -99,6 +144,84 @@ Read it like this:
 - Claude Code tasks go through the `claude-code` skill
 - local Claude Code runs are bridged through LiteLLM
 - LiteLLM is the compatibility layer that makes Claude Code work reliably with the local model setup
+
+## Why Not One Single Path For Everything?
+
+```mermaid
+flowchart TD
+  A[Normal Hermes chat] --> B[Direct to llama.cpp]
+  C[Claude Code task] --> D[Needs Anthropic-compatible behavior]
+  D --> E[LiteLLM bridge]
+  E --> F[llama.cpp]
+```
+
+The important idea is simple:
+
+- Hermes is already happy with a direct local model endpoint
+- Claude Code is the part that benefits from the extra compatibility layer
+- using LiteLLM only where it is needed keeps the setup easier to reason about
+
+## Telegram And Remote Use
+
+One reason Hermes is worth using here instead of treating everything as a local CLI trick is that Hermes is not tied to one terminal window.
+
+Hermes supports messaging gateways, and Telegram is one of the practical ones to keep in mind.
+
+That means you can:
+
+- run Hermes on your local machine or in WSL
+- keep the model and tooling running in the background
+- message Hermes from Telegram instead of sitting in front of the terminal all the time
+- let Hermes use the same local stack and tools while you interact from chat
+
+In other words, the value is not just "local model + scripts". The value is that Hermes can become the long-running agent interface, while Telegram can become the easy control surface.
+
+<p align="center">
+	<img src="images/readme-telegram-architecture.png" alt="Telegram and Hermes architecture illustration with direct llama.cpp path and optional Claude Code bridge path" width="980" />
+</p>
+
+```mermaid
+flowchart LR
+	T[Telegram] --> G[Hermes gateway]
+	G --> H[Hermes]
+	H --> L[llama.cpp]
+	H --> C[Claude Code via LiteLLM]
+```
+
+If you later want to share this setup with other people, that is a strong story:
+
+- local model for cost control and privacy
+- Hermes for durable agent behavior and tools
+- Telegram for convenient remote access
+- Claude Code as an optional specialist coding path when needed
+
+## Optional: Connect Your Own Telegram Bot
+
+If you want to control Hermes from Telegram, keep the local model setup exactly as it is and add Telegram only as the chat surface.
+
+The shortest stable setup flow is:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) using Telegram's official bot creation flow.
+2. Get your numeric Telegram user ID, as described in the official Hermes Telegram guide.
+3. Run `hermes gateway setup` in WSL and choose Telegram.
+4. Start the gateway with `hermes gateway`.
+5. Send your bot a message in Telegram and verify that Hermes replies.
+
+If you prefer the manual path instead of the wizard, the Hermes docs show the minimal environment variables for `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_USERS`.
+
+For the least stale instructions, use these official references:
+
+- Hermes messaging overview: [Hermes Messaging Gateway Overview](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/)
+- Hermes Telegram setup: [Hermes Telegram Setup](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram)
+- Hermes security notes: [Hermes Security Guide](https://hermes-agent.nousresearch.com/docs/user-guide/security)
+- Telegram bot creation: [Telegram BotFather: Creating a New Bot](https://core.telegram.org/bots/features#creating-a-new-bot)
+- Telegram getting-started tutorial: [Telegram Bot Tutorial](https://core.telegram.org/bots/tutorial)
+
+Useful things to know before you add the bot to groups:
+
+- Telegram group privacy mode is the most common reason bots appear to be "silent" in groups.
+- If you change privacy mode in BotFather, remove and re-add the bot to the group afterwards.
+- Hermes can also stay DM-only if you want the safest and simplest setup.
 
 ## Current Verified Defaults
 

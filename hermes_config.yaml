@@ -41,8 +41,9 @@ model:
   base_url: "http://127.0.0.1:8080/v1"
   api_key: "llama.cpp"
   # 96K reduziert Session-Splits und lokale Auto-Compression deutlich gegenueber
-  # 64K, bleibt aber noch realistischer als 128K auf dem aktuellen Host.
-  context_length: 98304
+  # 64K, bleibt aber noch realistischer als 128K auf dem aktuellen Host. 
+  
+  context_length: 65536
   # Sampling fuer Instruct / non-thinking Modus.
   temperature: 0.7
   top_p: 0.80
