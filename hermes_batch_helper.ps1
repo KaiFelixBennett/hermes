@@ -1,9 +1,11 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('GetModelBaseUrl', 'TestEndpoint')]
+    [ValidateSet('GetModelBaseUrl', 'GetRepoWslPath', 'TestEndpoint')]
     [string]$Action,
 
     [string]$ConfigPath,
+
+    [string]$InputPath,
 
     [string]$BaseUrl,
 
@@ -11,6 +13,22 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Convert-ToWslPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WindowsPath
+    )
+
+    $resolvedPath = (Resolve-Path $WindowsPath).Path
+    if ($resolvedPath -match '^([A-Za-z]):\\(.*)$') {
+        $drive = $matches[1].ToLowerInvariant()
+        $rest = $matches[2] -replace '\\', '/'
+        return "/mnt/$drive/$rest"
+    }
+
+    throw "Cannot convert path to WSL format: $WindowsPath"
+}
 
 function Get-HermesModelConfigValue {
     param(
@@ -47,7 +65,7 @@ function Get-HermesModelConfigValue {
 switch ($Action) {
     'GetModelBaseUrl' {
         if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
-            throw 'ConfigPath wird fuer GetModelBaseUrl benoetigt.'
+            throw 'ConfigPath is required for GetModelBaseUrl.'
         }
 
         $resolvedBaseUrl = Get-HermesModelConfigValue -Path $ConfigPath -Key 'base_url'
@@ -55,6 +73,15 @@ switch ($Action) {
             [Console]::Out.Write($resolvedBaseUrl)
         }
 
+        exit 0
+    }
+
+    'GetRepoWslPath' {
+        if ([string]::IsNullOrWhiteSpace($InputPath)) {
+            throw 'InputPath is required for GetRepoWslPath.'
+        }
+
+        [Console]::Out.Write((Convert-ToWslPath -WindowsPath $InputPath))
         exit 0
     }
 

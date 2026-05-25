@@ -1,4 +1,236 @@
-# Hermes Agent - Einrichtung auf diesem System
+# Hermes Agent — Operator Notes
+
+## What Is Hermes Agent?
+
+**Hermes Agent** by [NousResearch](https://github.com/NousResearch/hermes-agent) is a self-improving AI agent with:
+- Terminal UI with full TUI (multi-line editing, slash commands, etc.)
+- Closed learning loop (learns from experience, builds skills)
+- Messaging gateways (Telegram, Discord, Slack, WhatsApp, Signal)
+- 74 pre-installed skills
+- MCP integration
+- Cron scheduler for automated tasks
+
+**GitHub:** https://github.com/NousResearch/hermes-agent (115K+ stars)
+
+---
+
+## Installation (already done on this machine)
+
+The following is installed:
+- WSL2 with Ubuntu distribution
+- Hermes Agent v0.11.0 in `/root/.hermes/hermes-agent/` (inside WSL)
+- Python 3.11.15 virtual environment
+- Node.js v22.22.2
+- Playwright Chromium browser
+- uv package manager
+- 74 skills
+
+---
+
+## Configuration
+
+### LLM Provider: llama.cpp (local)
+
+The configuration uses **llama.cpp** as the local LLM provider:
+
+- **Model:** `Qwen3.6-27B-MTP GGUF`
+- **Provider:** `custom:local-llama-cpp` (custom endpoint, OpenAI API compatible)
+- **Endpoint:** `http://127.0.0.1:8080/v1`
+- **API key:** `llama.cpp` (placeholder, ignored for local runs)
+
+**Important:** The `custom:` prefix tells Hermes to use the local OpenAI-compatible endpoint from the `providers:` section. The collision-free provider key in this repo is `local-llama-cpp`, because the bare name `llamacpp` is aliased internally by Hermes to the built-in `custom` provider. The model name must exactly match the id returned by `GET /v1/models`; start llama.cpp with `--alias "Qwen3.6-27B-MTP GGUF"`.
+
+**Config file:** `~/.hermes/config.yaml` (in WSL) — mirrored from `hermes_config.yaml` in this repo at every start.
+
+**Switching models:** To use a different GGUF, change the physical file path under `model.path` and the visible alias under `model.default` in `hermes_config.yaml`. `start_llamacpp.ps1` reads the model path directly from the config; no script edits are required.
+
+**Model profile:** llama.cpp tuning notes for the currently loaded Qwen model are in `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`. That file covers context window decisions, Flash Attention, MTP, and the locally validated sampling profile.
+
+### Claude Code via LiteLLM (verified local path)
+
+The verified local Claude Code path on this system is:
+
+`Claude Code -> LiteLLM (/v1/messages on port 4000) -> llama.cpp (/v1/messages on port 8080)`
+
+- **LiteLLM config:** `litellm.proxy.yaml`
+- **LiteLLM start:** `./start_litellm.ps1`
+- **Proxy key:** `sk-hermes-local`
+- **Claude model name:** `qwen-local-anthropic`
+
+Start order:
+
+1. `./start_llamacpp.ps1`
+2. `./start_litellm.ps1`
+3. Start Claude Code in WSL with the gateway environment variables set
+
+Example:
+
+```bash
+cd /mnt/<drive>/<path-to-this-repo>
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json
+```
+
+A run counts as locally verified only when the JSON output contains `modelUsage.qwen-local-anthropic`.
+
+`claude_local.sh` automatically runs `ensure_claude_local_bridge.sh` first. If LiteLLM is not running on `127.0.0.1:4000`, that script starts the local proxy in WSL and waits until it is ready.
+
+For reproducible benchmarks, use the same wrapper instead of calling `claude` directly with a cloud alias. This avoids silent drift between the benchmark setup and the verified local path. For a reduced prompt surface, the runner can optionally use `CLAUDE_LOCAL_SIMPLE=1 ./claude_local.sh ...`.
+
+**Important:** For Claude Code, LiteLLM must **not** point to llama.cpp as an `openai/...` downstream, because LiteLLM would internally bridge Anthropic requests to the OpenAI responses API. This repo deliberately uses `anthropic/Qwen3.6-27B-MTP GGUF` pointed at `http://127.0.0.1:8080`.
+
+---
+
+## Why Does `127.0.0.1` Work From Inside WSL?
+
+This setup uses **WSL2 mirrored networking** (`~/.wslconfig` on the host):
+
+```ini
+[wsl2]
+networkingMode=mirrored
+
+[experimental]
+hostAddressLoopback=true
+```
+
+With this, Windows and WSL share the same network stack, so `localhost:8080` inside WSL is exactly the same as `127.0.0.1:8080` on Windows. No port forwarding, no firewall tweaks, no shifting gateway IPs.
+
+After changing `~/.wslconfig`, run `wsl --shutdown` once to apply.
+
+---
+
+## Starting Hermes Agent
+
+### Step 1: Start llama.cpp
+
+1. Start the llama.cpp server on Windows
+2. Load the **Qwen3.6-27B-MTP GGUF** model
+3. Expose the OpenAI-compatible server on port `8080`
+4. Expose the model under the alias **Qwen3.6-27B-MTP GGUF**
+
+Example:
+
+```powershell
+llama-server.exe -m "C:\Models\Qwen3.6-27B-MTP.gguf" --host 0.0.0.0 --port 8080 --ctx-size 98304 --alias "Qwen3.6-27B-MTP GGUF"
+```
+
+### Step 2: Start Hermes Agent
+
+Double-click `start_hermes.bat` or run from a terminal:
+
+```bash
+wsl -d Ubuntu -- /bin/bash -c "cd /root/.hermes/hermes-agent && source venv/bin/activate && hermes"
+```
+
+To use the combined Claude Code path, set the flag in PowerShell once for the session:
+
+```powershell
+$env:HERMES_USE_CLAUDE_LITELLM = "1"
+./start_hermes.bat
+```
+
+Without that flag, `start_hermes.bat` starts Hermes directly against llama.cpp.
+
+### Combined starter for Hermes + local Claude Code
+
+If Hermes should continue talking directly to llama.cpp, but Claude Code from the Hermes `claude-code` skill should automatically route through LiteLLM:
+
+```powershell
+./start_hermes_claude_local.bat
+```
+
+This starter:
+
+1. Checks or starts `llama.cpp`
+2. Checks or starts `LiteLLM`
+3. Starts Hermes Gateway
+4. Starts the Hermes CLI with `ANTHROPIC_*` variables set for local Claude Code subprocesses
+
+### Optional: Start LiteLLM for Claude Code separately
+
+In a Windows terminal:
+
+```powershell
+./start_litellm.ps1
+```
+
+### Step 3: Start chatting
+
+In the Hermes Agent terminal:
+- Type a message and press Enter
+- `/help` for the command list
+- `/model` to switch models
+- `/skills` to browse available skills
+
+---
+
+## Key Commands
+
+| Command | Description |
+|---------|-------------|
+| `hermes` | Start the interactive CLI |
+| `hermes model` | Choose LLM provider / model |
+| `hermes tools` | Configure tools |
+| `hermes config set` | Set individual config values |
+| `hermes gateway` | Start a messaging gateway |
+| `hermes setup` | Run the full setup wizard |
+| `hermes update` | Update to the latest version |
+| `hermes doctor` | Diagnose problems |
+
+---
+
+## File Locations
+
+| Path | Contents |
+|------|----------|
+| `/root/.hermes/hermes-agent/` | Hermes Agent installation (in WSL) |
+| `/root/.hermes/config.yaml` | Configuration file |
+| `/root/.hermes/.env` | API keys and secrets |
+| `/root/.hermes/SOUL.md` | Persona / personality file |
+| `/root/.hermes/skills/` | All 74 skills |
+| `/root/.hermes/MEMORY.md` | Long-term memory |
+| `/root/.hermes/USER.md` | User profile |
+
+---
+
+## FAQ
+
+### llama.cpp not reachable?
+- Is the llama.cpp server running and bound to **port 8080**?
+- Does the model alias match `Qwen3.6-27B-MTP GGUF` exactly?
+- Test on Windows: `Invoke-WebRequest http://127.0.0.1:8080/v1/models`
+- Test in WSL: `curl http://127.0.0.1:8080/v1/models`
+- WSL test fails? Check `~/.wslconfig` (see above) and run `wsl --shutdown`
+- Check in WSL: `wsl -d Ubuntu -- ip route` — with mirrored networking this should look like the Windows LAN (e.g. `default via 192.168.x.x`), **not** `172.23.x.x`
+
+### `Unknown provider 'xyz'` or fallback to OpenRouter?
+- `provider:` must be `custom:local-llama-cpp`, not just `llamacpp` or `openai`
+- There must be a `providers:` section with a `local-llama-cpp:` entry (including `base_url` / `api_key`)
+- Verify: `wsl -d Ubuntu -- bash -lc 'source /root/.hermes/hermes-agent/venv/bin/activate; hermes config show'`
+
+### Wrong model or `404` from llama.cpp?
+The model name in `hermes_config.yaml` must exactly match the id from `GET /v1/models`. With the recommended start command that is `Qwen3.6-27B-MTP GGUF`.
+
+### Claude Code still reports cloud models or phantom costs?
+- For the local gateway path always use `ANTHROPIC_BASE_URL=http://127.0.0.1:4000`, not `OPENAI_API_BASE_URL`
+- The JSON output must contain `modelUsage.qwen-local-anthropic`
+- `litellm.proxy.yaml` sets model costs to `0.0` locally so Claude Code does not derive cloud costs from the proxy metadata
+- If `start_litellm.ps1` is running, check `http://127.0.0.1:4000/v1/models` with `Authorization: Bearer sk-hermes-local`
+
+### Switching models?
+Change the model name and provider in `hermes_config.yaml`.
+
+### Using an API key provider instead of local?
+Set `provider` to `openrouter`, `anthropic`, etc. in `hermes_config.yaml` and add the API key in `.env`.
+
+---
+
+## Links
+
+- **Documentation:** https://hermes-agent.nousresearch.com/docs/
+- **GitHub:** https://github.com/NousResearch/hermes-agent
+- **Discord:** https://discord.gg/NousResearch
+- **Skills Hub:** https://agentskills.io
+
 
 ## Was ist Hermes Agent?
 
@@ -66,13 +298,15 @@ Startreihenfolge:
 Beispiel:
 
 ```bash
-cd /mnt/c/Users/KaiFe/Desktop/react-sim
-./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 1
+cd /mnt/<drive>/<path-to-this-repo>
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json
 ```
 
 Der Lauf gilt nur dann als lokal verifiziert, wenn im JSON-Output `modelUsage.qwen-local-anthropic` erscheint.
 
 `claude_local.sh` fuehrt davor automatisch `ensure_claude_local_bridge.sh` aus. Wenn LiteLLM auf `127.0.0.1:4000` nicht laeuft, startet das Skript den lokalen Proxy in WSL selbststaendig und wartet auf die Bereitschaft.
+
+Fuer reproduzierbare Benchmarks sollte der Runner denselben Wrapper benutzen statt `claude` direkt mit einem Cloud-Alias aufzurufen. Das vermeidet stilles Drift zwischen Benchmark-Setup und dem hier verifizierten lokalen Pfad. Fuer reduzierte Prompts kann der Runner optional `CLAUDE_LOCAL_SIMPLE=1 ./claude_local.sh ...` verwenden.
 
 Wichtig: Fuer Claude Code darf LiteLLM hier **nicht** als `openai/...`-Downstream auf llama.cpp zeigen, weil LiteLLM Anthropic-Requests sonst intern auf OpenAI `responses` bridged. Das Repo nutzt deshalb bewusst `anthropic/Qwen3.6-27B-MTP GGUF` gegen `http://127.0.0.1:8080`.
 

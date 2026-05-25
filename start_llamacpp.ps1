@@ -94,7 +94,7 @@ function Resolve-LlamaServerPath {
     )
 
     if (-not (Test-Path $llamaToolsRoot)) {
-        throw "llama.cpp Verzeichnis nicht gefunden: $llamaToolsRoot"
+        throw "llama.cpp directory not found: $llamaToolsRoot"
     }
 
     if (-not [string]::IsNullOrWhiteSpace($BinaryDir)) {
@@ -103,7 +103,7 @@ function Resolve-LlamaServerPath {
             return $candidateServer
         }
 
-        throw "llama-server.exe nicht gefunden im konfigurierten binary_dir: $candidateServer"
+        throw "llama-server.exe not found in configured binary_dir: $candidateServer"
     }
 
     $patterns = switch ($Backend.Trim().ToLowerInvariant()) {
@@ -116,7 +116,7 @@ function Resolve-LlamaServerPath {
         'sycl' { @('b*-win-sycl-x64') }
         'cpu' { @('b*-win-cpu-x64') }
         default {
-            throw "Unbekannter backend Wert '$Backend'. Erlaubt: auto, hip, vulkan, cuda, cuda12, cuda13, sycl, cpu."
+            throw "Unknown backend value '$Backend'. Allowed: auto, hip, vulkan, cuda, cuda12, cuda13, sycl, cpu."
         }
     }
 
@@ -127,7 +127,7 @@ function Resolve-LlamaServerPath {
         }
     }
 
-    throw "Keine installierte llama.cpp-Binary fuer backend '$Backend' gefunden unter $llamaToolsRoot. Installiere das passende Release oder setze model.binary_dir."
+    throw "No installed llama.cpp binary for backend '$Backend' found under $llamaToolsRoot. Install the matching release or set model.binary_dir."
 }
 
 function Get-LlamaDeviceInfo {
@@ -186,7 +186,7 @@ if ([string]::IsNullOrWhiteSpace($modelAlias)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($modelPath)) {
-    throw "Modellpfad fehlt. Setze model.path in hermes_config.yaml oder HERMES_LLAMACPP_MODEL_PATH."
+    throw "Model path is missing. Set model.path in hermes_config.yaml or HERMES_LLAMACPP_MODEL_PATH."
 }
 
 if ([string]::IsNullOrWhiteSpace($baseUrl)) {
@@ -206,22 +206,22 @@ $serverPath = Resolve-LlamaServerPath -Backend $requestedBackend -BinaryDir $bin
 try {
     $uri = [Uri]$baseUrl
 } catch {
-    throw "Ungueltige base_url in hermes_config.yaml: $baseUrl"
+    throw "Invalid base_url in hermes_config.yaml: $baseUrl"
 }
 
 $hostIp = $uri.Host
 $port = $uri.Port
 
 if (-not (Test-Path $serverPath)) {
-    throw "llama-server.exe nicht gefunden: $serverPath"
+    throw "llama-server.exe not found: $serverPath"
 }
 
 if (-not (Test-Path $modelPath)) {
-    throw "GGUF-Modell nicht gefunden: $modelPath"
+    throw "GGUF model not found: $modelPath"
 }
 
 if (-not (Test-Path $chatTemplatePath)) {
-    throw "Chat-Template nicht gefunden: $chatTemplatePath"
+    throw "Chat template not found: $chatTemplatePath"
 }
 
 $deviceInfo = Get-LlamaDeviceInfo -ServerPath $serverPath
@@ -236,6 +236,8 @@ $arguments = @(
     '--chat-template-file', $chatTemplatePath,
     '--parallel', $parallelSlots,
     '--flash-attn', $flashAttention,
+    '--cache-reuse', '1024',
+    '--kv-unified',              # Enables effective cache reuse.
     '--reasoning', $reasoningMode,
     '--jinja'
 )
@@ -342,7 +344,7 @@ if ($deviceName) {
     Write-Host 'Device : auto'
 }
 Write-Host ''
-Write-Host 'Hinweis: Es wird ausschliesslich das exakte MTP-GGUF verwendet.'
+Write-Host 'Note: This launcher uses only the exact configured MTP GGUF.'
 Write-Host ''
 
 Push-Location (Split-Path -Parent $serverPath)

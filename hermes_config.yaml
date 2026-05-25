@@ -1,58 +1,56 @@
 # Hermes Agent CLI Configuration - llama.cpp Setup
-# WSL2 mit mirrored networking -> localhost == Windows-localhost
+# WSL2 with mirrored networking -> localhost == Windows localhost
 
-# Custom-Provider-Definition: llama.cpp (OpenAI-API-kompatibel).
-# Wichtig: 'provider' unten muss "custom:<key>" lauten, damit Hermes
-# den Endpoint aus dieser Datei verwendet.
-# Der Modellname muss exakt der id aus GET /v1/models entsprechen.
+# Custom provider definition: llama.cpp (OpenAI API compatible).
+# Important: 'provider' below must be "custom:<key>" so Hermes
+# uses the endpoint from this file.
+# The model name must exactly match the id from GET /v1/models.
 providers:
-  # Wichtig: nicht den rohen Key "llamacpp" verwenden. Hermes aliasiert diesen
-  # intern auf den eingebauten Provider "custom", wodurch Auxiliary-Routing den
-  # benannten Custom-Provider nicht mehr findet.
+  # Important: do not use the raw key "llamacpp". Hermes aliases it
+  # internally to the built-in provider "custom", which prevents
+  # auxiliary routing from finding this named custom provider.
   local-llama-cpp:
     name: "llama.cpp"
     base_url: "http://127.0.0.1:8080/v1"
-    api_key: "llama.cpp"           # Platzhalter - lokal i.d.R. ignoriert
+    api_key: "llama.cpp"           # Placeholder - usually ignored for local runs
     api_mode: "chat_completions"
     default_model: "Qwen3.6-27B-MTP GGUF"
     model: "Qwen3.6-27B-MTP GGUF"
     models:
-      - "Qwen3.6-27B-MTP GGUF"     # Starte llama.cpp am besten mit exakt diesem Alias
+      - "Qwen3.6-27B-MTP GGUF"     # Best started with this exact llama.cpp alias
 
 model:
-  # Physischer GGUF-Pfad fuer den lokalen llama.cpp-Start. Fuer ein anderes
-  # Modell hier nur den Dateipfad aendern; start_llamacpp.ps1 liest diesen Wert
-  # direkt ein und muss dann nicht mehr manuell editiert werden.
+  # Physical GGUF path for local llama.cpp startup. For a different
+  # model, only change the file path here; start_llamacpp.ps1 reads
+  # this value directly, so no script edits are required.
   path: 'E:\Coding\custom-rag\data\models\qwen3.6-27b-mtp\Qwen3.6-27B-Q4_K_M-mtp.gguf'
-  # API-Alias fuer Hermes und llama.cpp /v1/models. Bei Modellwechsel diesen
-  # Alias und die Provider-Eintraege unten konsistent mit dem geladenen Modell
-  # halten.
+  # API alias used by Hermes and llama.cpp /v1/models. Keep this alias
+  # and the provider entries below consistent with the loaded model.
   default: "Qwen3.6-27B-MTP GGUF"
-  # Installierte Backends fuer start_llamacpp.ps1:
+  # Installed backends for start_llamacpp.ps1:
   # - "vulkan" -> tools/llama.cpp/b9284-win-vulkan-x64
   # - "hip"    -> tools/llama.cpp/b9284-win-hip-radeon-x64
-  # Zum Wechsel nur diesen Wert aendern oder HERMES_LLAMACPP_BACKEND setzen.
+  # To switch, change only this value or set HERMES_LLAMACPP_BACKEND.
   backend: "hip"
-  # Optional: exakter Unterordner unter tools/llama.cpp, z.B.
-  # "b9284-win-hip-radeon-x64". Leer lassen fuer automatische Auswahl passend
-  # zu backend.
+  # Optional: exact subfolder under tools/llama.cpp, e.g.
+  # "b9284-win-hip-radeon-x64". Leave empty for automatic backend-based selection.
   # binary_dir: "b9284-win-hip-radeon-x64"
   provider: "custom:local-llama-cpp"
   base_url: "http://127.0.0.1:8080/v1"
   api_key: "llama.cpp"
-  # 96K reduziert Session-Splits und lokale Auto-Compression deutlich gegenueber
-  # 64K, bleibt aber noch realistischer als 128K auf dem aktuellen Host. 
+  # 96K reduces session splits and local auto-compression significantly
+  # vs 64K, while remaining more realistic than 128K on this host.
   
   context_length: 65536
-  # Sampling fuer Instruct / non-thinking Modus.
+  # Sampling for instruct / non-thinking mode.
   temperature: 0.7
   top_p: 0.80
   top_k: 20
   min_p: 0.0
   presence_penalty: 1.5
   repeat_penalty: 1.0
-  # llama.cpp MTP / speculative decoding fuer das geladene MTP-GGUF.
-  # Wir mappen hier nur die naechsten llama.cpp-Pendants; kein Neustart hier.
+  # llama.cpp MTP / speculative decoding for the loaded MTP GGUF.
+  # This maps to the closest llama.cpp equivalents; no restart logic here.
   speculative_type: "draft-mtp"
   speculative_draft_tokens: 4
 
@@ -79,10 +77,9 @@ compression:
   protect_last_n: 12
   summary_model: "Qwen3.6-27B-MTP GGUF"
 
-# Lokale 27B-Modelle reagieren deutlich traeger auf Background-Tasks als Cloud-APIs.
-# Deshalb pinnen wir die Aufgaben explizit auf den benannten lokalen Provider und
-# halten die Timeouts bewusst enger, damit Hermes nicht minutenlang in stillen
-# Nebenlaeufen haengen bleibt.
+# Local 27B models are slower for background tasks than cloud APIs.
+# Pin auxiliary tasks to the named local provider and keep tighter
+# timeouts to avoid multi-minute silent background runs.
 auxiliary:
   vision: { provider: "custom:local-llama-cpp", model: "Qwen3.6-27B-MTP GGUF", timeout: 120 }
   web_extract: { provider: "custom:local-llama-cpp", model: "Qwen3.6-27B-MTP GGUF", timeout: 120 }

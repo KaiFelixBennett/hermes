@@ -1,14 +1,15 @@
 #!/bin/bash
-# Hermes Agent Launcher (interaktiver CLI-Modus)
-# Wird von start_hermes.bat im Hauptfenster gestartet.
-# Voraussetzung: WSL2 mit mirrored networking (siehe ~/.wslconfig auf dem Host)
-# -> llama.cpp/OpenAI-kompatibler Server ist innerhalb von WSL auf dem
-#    in der Config hinterlegten localhost-Endpoint erreichbar.
+# Hermes Agent launcher (interactive CLI mode)
+# Started by start_hermes.bat in the main terminal window.
+# Requirement: WSL2 with mirrored networking (see ~/.wslconfig on host)
+# -> llama.cpp/OpenAI-compatible server is reachable from inside WSL
+#    via the localhost endpoint configured in hermes_config.yaml.
 
 set -e
 
 CONFIG="/root/.hermes/config.yaml"
-LOCAL_CONFIG="/mnt/c/Users/KaiFe/Desktop/react-sim/hermes_config.yaml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_CONFIG="${HERMES_LOCAL_CONFIG:-${SCRIPT_DIR}/hermes_config.yaml}"
 
 configure_claude_code_bridge() {
     local enabled="${HERMES_CLAUDE_USE_LITELLM:-0}"
@@ -27,13 +28,13 @@ configure_claude_code_bridge() {
 
     bridge_url="${bridge_url%/}"
 
-    echo -n "LiteLLM Pruefung (${bridge_url}): "
+    echo -n "LiteLLM check (${bridge_url}): "
     if curl -s --connect-timeout 3 -H "Authorization: Bearer ${bridge_token}" "${bridge_url}/v1/models" > /dev/null 2>&1; then
         echo "OK"
     else
-        echo "NICHT ERREICHBAR"
+        echo "UNREACHABLE"
         echo ""
-        echo "Bitte LiteLLM lokal starten, bevor Hermes Claude Code mit dem lokalen Gateway nutzen soll."
+        echo "Please start LiteLLM locally before using Hermes Claude Code through the local gateway."
         exit 1
     fi
 
@@ -64,7 +65,7 @@ extract_model_value() {
     ' "$CONFIG"
 }
 
-# Frische Config aus dem Repo spiegeln
+# Mirror the fresh config from the repository
 if [ -f "$LOCAL_CONFIG" ]; then
     mkdir -p "$(dirname "$CONFIG")"
     cp "$LOCAL_CONFIG" "$CONFIG"
@@ -83,23 +84,23 @@ fi
 
 API_BASE_URL="${API_BASE_URL%/}"
 
-echo -n "llama.cpp Pruefung (${API_BASE_URL}): "
+echo -n "llama.cpp check (${API_BASE_URL}): "
 if curl -s --connect-timeout 3 "${API_BASE_URL}/models" > /dev/null 2>&1; then
     echo "OK"
 else
-    echo "NICHT ERREICHBAR"
+    echo "UNREACHABLE"
     echo ""
-    echo "Bitte llama.cpp als OpenAI-kompatiblen Server starten."
-    echo "Empfohlen: --alias \"${MODEL_NAME}\" --ctx-size 98304"
-    echo "Pruefe ausserdem ~/.wslconfig: networkingMode=mirrored"
+    echo "Please start llama.cpp as an OpenAI-compatible server."
+    echo "Recommended: --alias \"${MODEL_NAME}\" --ctx-size 98304"
+    echo "Also check ~/.wslconfig: networkingMode=mirrored"
     exit 1
 fi
 
 echo ""
 echo "========================================"
-echo "  Hermes Agent (interaktiver Modus)"
-echo "  Gateway laeuft im Hintergrund-Fenster"
-echo "  Modell: ${MODEL_NAME}"
+echo "  Hermes Agent (interactive mode)"
+echo "  Gateway runs in background window"
+echo "  Model: ${MODEL_NAME}"
 echo "========================================"
 echo ""
 

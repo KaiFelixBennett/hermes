@@ -1,79 +1,90 @@
 @echo off
 setlocal
 
+set "REPO_ROOT_WIN=%~dp0"
 set "CONFIG_PATH=%~dp0hermes_config.yaml"
 set "HERMES_BASE_URL=http://127.0.0.1:8080/v1"
 set "LITELLM_BASE_URL=http://127.0.0.1:4000/v1"
 set "LITELLM_MASTER_KEY=sk-hermes-local"
 set "CLAUDE_LOCAL_MODEL=qwen-local-anthropic"
+set "HERMES_REPO_WSL="
 set "HERMES_HELPER_SCRIPT=%~dp0hermes_batch_helper.ps1"
 set "LLAMA_SERVER_SCRIPT=%~dp0start_llamacpp.ps1"
 set "LITELLM_SERVER_SCRIPT=%~dp0start_litellm.ps1"
+
+set "REPO_WIN_NOTRAIL=%REPO_ROOT_WIN:~0,-1%"
+for /f "delims=" %%P in ('wsl wslpath -u "%REPO_WIN_NOTRAIL%"') do set "HERMES_REPO_WSL=%%P"
+if "%HERMES_REPO_WSL%"=="" (
+    echo [ERROR] Could not resolve WSL path for this repository.
+    echo         Make sure WSL2 is installed with at least one Linux distribution.
+    pause
+    exit /b 1
+)
 
 call :read_base_url
 
 echo.
 echo ========================================
 echo   Hermes + Claude Code Local Starter
-echo   Hermes: llama.cpp direkt
+echo   Hermes: llama.cpp direct
 echo   Claude Code: LiteLLM ^> llama.cpp
 echo ========================================
 echo.
 
-echo [1/4] Pruefe llama.cpp auf %HERMES_BASE_URL% ...
+echo [1/4] Checking llama.cpp on %HERMES_BASE_URL% ...
 call :check_llama
 if errorlevel 1 (
     if not exist "%LLAMA_SERVER_SCRIPT%" (
-        echo     [FEHLER] %LLAMA_SERVER_SCRIPT% wurde nicht gefunden.
+        echo     [ERROR] %LLAMA_SERVER_SCRIPT% was not found.
         pause
         exit /b 1
     )
 
-    echo     [INFO] Starte llama.cpp im Hintergrund-Fenster ...
+    echo     [INFO] Starting llama.cpp in a background window ...
     start "llama.cpp Server" powershell -NoExit -ExecutionPolicy Bypass -File "%LLAMA_SERVER_SCRIPT%"
 
     call :wait_for_llama
     if errorlevel 1 (
-        echo     [FEHLER] llama.cpp antwortet weiterhin nicht auf %HERMES_BASE_URL%
-        echo     Bitte pruefe das neue Fenster fuer die konkrete Fehlermeldung.
+        echo     [ERROR] llama.cpp is still not responding at %HERMES_BASE_URL%
+        echo     Check the new window for the detailed error message.
         echo.
         pause
         exit /b 1
     )
 )
-echo     [OK] llama.cpp laeuft.
+echo     [OK] llama.cpp is running.
 
-echo [2/4] Pruefe LiteLLM auf %LITELLM_BASE_URL% ...
+echo [2/4] Checking LiteLLM on %LITELLM_BASE_URL% ...
 call :check_litellm
 if errorlevel 1 (
     if not exist "%LITELLM_SERVER_SCRIPT%" (
-        echo     [FEHLER] %LITELLM_SERVER_SCRIPT% wurde nicht gefunden.
+        echo     [ERROR] %LITELLM_SERVER_SCRIPT% was not found.
         pause
         exit /b 1
     )
 
-    echo     [INFO] Starte LiteLLM im Hintergrund-Fenster ...
+    echo     [INFO] Starting LiteLLM in a background window ...
     start "LiteLLM Proxy" powershell -NoExit -ExecutionPolicy Bypass -File "%LITELLM_SERVER_SCRIPT%"
 
     call :wait_for_litellm
     if errorlevel 1 (
-        echo     [FEHLER] LiteLLM antwortet weiterhin nicht auf %LITELLM_BASE_URL%
-        echo     Bitte pruefe das neue Fenster fuer die konkrete Fehlermeldung.
+        echo     [ERROR] LiteLLM is still not responding at %LITELLM_BASE_URL%
+        echo     Check the new window for the detailed error message.
         echo.
         pause
         exit /b 1
     )
 )
-echo     [OK] LiteLLM laeuft.
+echo     [OK] LiteLLM is running.
 
-echo [3/4] Starte Hermes Gateway (Telegram) ...
-start "Hermes Gateway" cmd /c "wsl -d Ubuntu -- /bin/bash -lc \"HERMES_CLAUDE_USE_LITELLM=1 HERMES_CLAUDE_BASE_URL=http://127.0.0.1:4000 HERMES_CLAUDE_AUTH_TOKEN=%LITELLM_MASTER_KEY% HERMES_CLAUDE_MODEL=%CLAUDE_LOCAL_MODEL% /mnt/c/Users/KaiFe/Desktop/react-sim/hermes_gateway.sh\""
+echo [3/4] Starting Hermes Gateway (Telegram) ...
+start "Hermes Gateway" cmd /k "wsl -d Ubuntu -- /bin/bash -lc "HERMES_CLAUDE_USE_LITELLM=1 HERMES_CLAUDE_BASE_URL=http://127.0.0.1:4000 HERMES_CLAUDE_AUTH_TOKEN=%LITELLM_MASTER_KEY% HERMES_CLAUDE_MODEL=%CLAUDE_LOCAL_MODEL% %HERMES_REPO_WSL%/hermes_gateway.sh""
 
 timeout /t 5 /nobreak >nul
 
-echo [4/4] Starte Hermes CLI (interaktiv) ...
+echo [4/4] Starting Hermes CLI (interactive) ...
 echo.
-wsl -d Ubuntu -- /bin/bash -lc "HERMES_CLAUDE_USE_LITELLM=1 HERMES_CLAUDE_BASE_URL=http://127.0.0.1:4000 HERMES_CLAUDE_AUTH_TOKEN=%LITELLM_MASTER_KEY% HERMES_CLAUDE_MODEL=%CLAUDE_LOCAL_MODEL% /mnt/c/Users/KaiFe/Desktop/react-sim/hermes_launch.sh"
+wsl -d Ubuntu -- /bin/bash -lc "HERMES_CLAUDE_USE_LITELLM=1 HERMES_CLAUDE_BASE_URL=http://127.0.0.1:4000 HERMES_CLAUDE_AUTH_TOKEN=%LITELLM_MASTER_KEY% HERMES_CLAUDE_MODEL=%CLAUDE_LOCAL_MODEL% %HERMES_REPO_WSL%/hermes_launch.sh"
 
 endlocal
 exit /b 0

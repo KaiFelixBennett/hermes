@@ -17,15 +17,15 @@ function Convert-ToWslPath {
         return "/mnt/$drive/$rest"
     }
 
-    throw "Kann Pfad nicht in WSL umwandeln: $WindowsPath"
+    throw "Cannot convert path to WSL format: $WindowsPath"
 }
 
 if (-not (Test-Path $configPath)) {
-    throw "LiteLLM-Konfiguration nicht gefunden: $configPath"
+    throw "LiteLLM configuration not found: $configPath"
 }
 
 if (-not (Test-Path $launcherPath)) {
-    throw "LiteLLM-Launcher nicht gefunden: $launcherPath"
+    throw "LiteLLM launcher not found: $launcherPath"
 }
 
 $listenHost = if ([string]::IsNullOrWhiteSpace($env:HERMES_LITELLM_HOST)) { '127.0.0.1' } else { $env:HERMES_LITELLM_HOST.Trim() }

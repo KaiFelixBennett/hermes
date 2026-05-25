@@ -1,11 +1,12 @@
 #!/bin/bash
-# Hermes Gateway Launcher (Telegram + andere Plattformen)
-# Laeuft im Hintergrund-Fenster, gestartet von start_hermes.bat
+# Hermes Gateway launcher (Telegram + other platforms)
+# Runs in a background window, started by start_hermes.bat
 
 set -e
 
 CONFIG="/root/.hermes/config.yaml"
-LOCAL_CONFIG="/mnt/c/Users/KaiFe/Desktop/react-sim/hermes_config.yaml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_CONFIG="${HERMES_LOCAL_CONFIG:-${SCRIPT_DIR}/hermes_config.yaml}"
 
 configure_claude_code_bridge() {
     local enabled="${HERMES_CLAUDE_USE_LITELLM:-0}"
@@ -24,13 +25,13 @@ configure_claude_code_bridge() {
 
     bridge_url="${bridge_url%/}"
 
-    echo -n "LiteLLM Pruefung (${bridge_url}): "
+    echo -n "LiteLLM check (${bridge_url}): "
     if curl -s --connect-timeout 3 -H "Authorization: Bearer ${bridge_token}" "${bridge_url}/v1/models" > /dev/null 2>&1; then
         echo "OK"
     else
-        echo "NICHT ERREICHBAR"
+        echo "UNREACHABLE"
         echo ""
-        echo "Bitte LiteLLM lokal starten, bevor Hermes Claude Code mit dem lokalen Gateway nutzen soll."
+        echo "Please start LiteLLM locally before using Hermes Claude Code through the local gateway."
         exit 1
     fi
 
@@ -61,7 +62,7 @@ extract_model_value() {
     ' "$CONFIG"
 }
 
-# Frische Config aus dem Repo spiegeln
+# Mirror the fresh config from the repository
 if [ -f "$LOCAL_CONFIG" ]; then
     mkdir -p "$(dirname "$CONFIG")"
     cp "$LOCAL_CONFIG" "$CONFIG"
@@ -80,20 +81,20 @@ fi
 
 API_BASE_URL="${API_BASE_URL%/}"
 
-echo -n "llama.cpp Pruefung (${API_BASE_URL}): "
+echo -n "llama.cpp check (${API_BASE_URL}): "
 if curl -s --connect-timeout 3 "${API_BASE_URL}/models" > /dev/null 2>&1; then
     echo "OK"
 else
-    echo "NICHT ERREICHBAR"
+    echo "UNREACHABLE"
     echo ""
-    echo "Bitte llama.cpp als OpenAI-kompatiblen Server starten."
-    echo "Empfohlen: --alias \"${MODEL_NAME}\" --ctx-size 65536"
+    echo "Please start llama.cpp as an OpenAI-compatible server."
+    echo "Recommended: --alias \"${MODEL_NAME}\" --ctx-size 65536"
     exit 1
 fi
 
 echo "========================================"
 echo "  Hermes Gateway (Telegram Integration)"
-echo "  Modell: ${MODEL_NAME}"
+echo "  Model: ${MODEL_NAME}"
 echo "========================================"
 echo ""
 

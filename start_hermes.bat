@@ -1,8 +1,10 @@
 @echo off
 setlocal
 
+set "REPO_ROOT_WIN=%~dp0"
 set "CONFIG_PATH=%~dp0hermes_config.yaml"
 set "HERMES_BASE_URL=http://127.0.0.1:8080/v1"
+set "HERMES_REPO_WSL="
 set "HERMES_HELPER_SCRIPT=%~dp0hermes_batch_helper.ps1"
 set "LLAMA_SERVER_SCRIPT=%~dp0start_llamacpp.ps1"
 set "COMBINED_STARTER=%~dp0start_hermes_claude_local.bat"
@@ -10,57 +12,66 @@ set "COMBINED_STARTER=%~dp0start_hermes_claude_local.bat"
 if /I "%HERMES_USE_CLAUDE_LITELLM%"=="1" goto :run_combined
 if /I "%HERMES_USE_CLAUDE_LITELLM%"=="true" goto :run_combined
 
+set "REPO_WIN_NOTRAIL=%REPO_ROOT_WIN:~0,-1%"
+for /f "delims=" %%P in ('wsl wslpath -u "%REPO_WIN_NOTRAIL%"') do set "HERMES_REPO_WSL=%%P"
+if "%HERMES_REPO_WSL%"=="" (
+    echo [ERROR] Could not resolve WSL path for this repository.
+    echo         Make sure WSL2 is installed with at least one Linux distribution.
+    pause
+    exit /b 1
+)
+
 call :read_base_url
 
 echo.
 echo ========================================
-echo   Hermes Agent Startskript
+echo   Hermes Agent Starter
 echo   Provider: llama.cpp (Qwen3.6-27B-MTP GGUF)
 echo ========================================
 echo.
 
-REM --- 1) llama.cpp/OpenAI-Endpoint auf Windows-Localhost pruefen ---
-echo [1/3] Pruefe llama.cpp auf %HERMES_BASE_URL% ...
+REM --- 1) Check llama.cpp OpenAI endpoint on Windows localhost ---
+echo [1/3] Checking llama.cpp on %HERMES_BASE_URL% ...
 call :check_llama
 if errorlevel 1 (
     if not exist "%LLAMA_SERVER_SCRIPT%" (
-        echo     [FEHLER] %LLAMA_SERVER_SCRIPT% wurde nicht gefunden.
+        echo     [ERROR] %LLAMA_SERVER_SCRIPT% was not found.
         pause
         exit /b 1
     )
 
-    echo     [INFO] Starte llama.cpp im Hintergrund-Fenster ...
+    echo     [INFO] Starting llama.cpp in a background window ...
     start "llama.cpp Server" powershell -NoExit -ExecutionPolicy Bypass -File "%LLAMA_SERVER_SCRIPT%"
 
     call :wait_for_llama
     if errorlevel 1 (
-        echo     [FEHLER] llama.cpp antwortet weiterhin nicht auf %HERMES_BASE_URL%
-        echo     Bitte pruefe das neue Fenster fuer die konkrete Fehlermeldung.
+        echo     [ERROR] llama.cpp is still not responding at %HERMES_BASE_URL%
+        echo     Check the new window for the detailed error message.
         echo.
         pause
         exit /b 1
     )
 )
-echo     [OK] llama.cpp laeuft.
+echo     [OK] llama.cpp is running.
 
-REM --- 2) Gateway im Hintergrund starten (Telegram) ---
-echo [2/3] Starte Hermes Gateway (Telegram) ...
-start "Hermes Gateway" cmd /c "wsl -d Ubuntu -- /bin/bash /mnt/c/Users/KaiFe/Desktop/react-sim/hermes_gateway.sh"
+REM --- 2) Start gateway in background (Telegram) ---
+echo [2/3] Starting Hermes Gateway (Telegram) ...
+start "Hermes Gateway" cmd /k "wsl -d Ubuntu -- /bin/bash %HERMES_REPO_WSL%/hermes_gateway.sh"
 
-REM Kurze Pause damit der Gateway hochkommt
+REM Short wait to give the gateway time to initialize
 timeout /t 5 /nobreak >nul
 
-REM --- 3) Interaktiven CLI starten ---
-echo [3/3] Starte Hermes CLI (interaktiv) ...
+REM --- 3) Start interactive CLI ---
+echo [3/3] Starting Hermes CLI (interactive) ...
 echo.
-wsl -d Ubuntu -- /bin/bash /mnt/c/Users/KaiFe/Desktop/react-sim/hermes_launch.sh
+wsl -d Ubuntu -- /bin/bash %HERMES_REPO_WSL%/hermes_launch.sh
 
 endlocal
 exit /b 0
 
 :run_combined
 if not exist "%COMBINED_STARTER%" (
-    echo [FEHLER] %COMBINED_STARTER% wurde nicht gefunden.
+    echo [ERROR] %COMBINED_STARTER% was not found.
     pause
     exit /b 1
 )

@@ -79,6 +79,34 @@ Use this repo if you want one of these outcomes:
 
 ## Quick Start
 
+### Recommended First Run: One Setup Script
+
+For first-time setup on a new machine, run:
+
+```powershell
+./setup_hermes_local.ps1
+```
+
+What this script does:
+
+1. verifies required local files exist
+2. checks your configured GGUF path in `hermes_config.yaml`
+3. prompts for a GGUF path if the configured one is missing
+4. writes the new path back to `model.path`
+5. starts the normal Hermes launcher
+
+If you want first run plus Claude Code bridge in one step:
+
+```powershell
+./setup_hermes_local.ps1 -WithClaudeBridge
+```
+
+If you only want to update config without starting Hermes:
+
+```powershell
+./setup_hermes_local.ps1 -SkipLaunch
+```
+
 ### Option 1: Hermes only
 
 ```powershell
@@ -110,11 +138,13 @@ $env:HERMES_USE_CLAUDE_LITELLM = "1"
 ### Option 3: Local Claude Code check without Hermes
 
 ```bash
-cd /mnt/c/Users/KaiFe/Desktop/react-sim
-./claude_local.sh -p 'Reply with exactly OK.' --output-format json --max-turns 5
+cd /mnt/<your-drive-letter>/<path-to-this-repo>
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json
 ```
 
 That wrapper first runs `./ensure_claude_local_bridge.sh`, which starts LiteLLM on demand if the bridge is not already up.
+
+If you intentionally want the smaller `--bare` prompt surface for experiments, run the same wrapper with `CLAUDE_LOCAL_SIMPLE=1`.
 
 Treat the run as locally verified only when the JSON output contains `modelUsage.qwen-local-anthropic`.
 
@@ -249,9 +279,13 @@ That file captures:
 ## Files That Matter
 
 - `hermes_config.yaml`: main Hermes provider and model config
+- `setup_hermes_local.ps1`: first-run setup wizard and launcher (recommended)
+- `setup_hermes_local.bat`: double-click wrapper for the setup wizard
 - `start_llamacpp.ps1`: starts `llama.cpp` from repo config
 - `start_litellm.ps1`: starts LiteLLM in WSL for the Claude bridge
 - `claude_local.sh`: standard local Claude Code entry point
+  - Defaults to the verified local model alias `qwen-local-anthropic`
+  - Set `CLAUDE_LOCAL_SIMPLE=1` to re-enable the reduced-context `--bare` mode for controlled experiments
 - `ensure_claude_local_bridge.sh`: on-demand LiteLLM self-healing wrapper
 - `litellm.proxy.yaml`: LiteLLM bridge config
 - `start_hermes_claude_local.bat`: combined Hermes + Claude Code starter
@@ -267,6 +301,19 @@ If you reuse this setup elsewhere, usually only these parts need to change:
 2. the installed `llama.cpp` backend and binary folder
 3. any machine-specific paths to GGUFs or tools
 4. optional backend tuning for your GPU
+
+### Exact Fields To Review
+
+For most users, these are the only values that are machine-specific:
+
+1. `hermes_config.yaml` -> `model.path`
+2. `hermes_config.yaml` -> `model.backend` (for your hardware, e.g. `hip`, `vulkan`, `cuda`)
+3. `hermes_config.yaml` -> optional `model.binary_dir` (if you want to pin a specific llama.cpp build folder)
+
+Usually you do not need to edit script paths manually anymore:
+
+- `start_hermes.bat` and `start_hermes_claude_local.bat` now resolve the repo path dynamically
+- `hermes_gateway.sh` and `hermes_launch.sh` load `hermes_config.yaml` relative to their own script location
 
 The overall architecture can stay the same.
 
