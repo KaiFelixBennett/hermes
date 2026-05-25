@@ -1,11 +1,16 @@
-# Hermes Local Stack — Local Agentic Coding with Claude Code, llama.cpp, Zero API Costs
+# Hermes Local Stack — 7 Million Tokens for Free
 
+### Local agentic coding with Claude Code + Hermes Agent + llama.cpp · Zero API costs · No data leaves your machine
+
+[![GitHub Stars](https://img.shields.io/github/stars/KaiFelixBennett/hermes-claude-code-local?style=social)](https://github.com/KaiFelixBennett/hermes-claude-code-local/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
 [![Hermes Agent](https://img.shields.io/badge/Hermes-Agent-orange)](https://hermes-agent.nousresearch.com/)
 [![Local Inference](https://img.shields.io/badge/Inference-llama.cpp-green)](https://github.com/ggerganov/llama.cpp)
 
-**Local agentic coding with [Hermes Agent](https://hermes-agent.nousresearch.com/) + llama.cpp — autonomous multi-step tasks, tool use, and file edits on your own hardware.** Zero API costs. No data leaves your machine. Optional Claude Code bridge via LiteLLM.
+> **A 4-hour autonomous coding session — 7,256,671 tokens — would have cost $94.34 on Claude Opus 4.7. With this stack: $0.**
+
+This repo wires [Hermes Agent](https://hermes-agent.nousresearch.com/) directly to `llama.cpp` and optionally bridges Claude Code through a local LiteLLM proxy — so your agent calls tools, edits files, and runs task loops 100% on your own hardware.
 
 ---
 
@@ -375,7 +380,24 @@ A real session on an AMD Radeon AI PRO R9700 (32 GB VRAM) ran **7 million tokens
 
 Issues, PRs, and config contributions for different hardware setups (NVIDIA CUDA, Apple Silicon, CPU-only builds) are very welcome.
 
+The most useful contributions right now:
+- **Hardware configs** — got it running on NVIDIA / Apple Silicon / CPU-only? Open a [Hardware Config issue](https://github.com/KaiFelixBennett/hermes-claude-code-local/issues/new?template=hardware_config.md) or add a file under `docs/models/`
+- **Bug reports** — especially for WSL2 edge cases and GPU backend quirks
+- **Script improvements** — portability, error messages, edge cases
+
 If this stack saves you money or solves a problem, a ⭐ on the repo helps others find it.
+
+---
+
+## Community
+
+This project exists because local LLMs are finally good enough to replace cloud APIs for real agentic work. If you've used it, broken it, or improved it — share it with others who might benefit:
+
+- [r/LocalLLaMA](https://www.reddit.com/r/LocalLLaMA/) — the best community for local model setups
+- [r/ClaudeAI](https://www.reddit.com/r/ClaudeAI/) — for Claude Code users
+- [Hermes Discord](https://hermes-agent.nousresearch.com/docs/) — for Hermes-specific questions
+
+[![Star History Chart](https://api.star-history.com/svg?repos=KaiFelixBennett/hermes-claude-code-local&type=Date)](https://star-history.com/#KaiFelixBennett/hermes-claude-code-local&Date)
 
 ---
 
