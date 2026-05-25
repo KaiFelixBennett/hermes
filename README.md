@@ -2,7 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)]()
-[![Hermes](https://img.shields.io/badge/Hermes-Agent-orange)](https://hermes-agent.nousresearch.com/)
+[![Hermes Agent](https://img.shields.io/badge/Hermes-Agent-orange)](https://hermes-agent.nousresearch.com/)
+[![Local Inference](https://img.shields.io/badge/Inference-llama.cpp-green)](https://github.com/ggerganov/llama.cpp)
 
 Run [Hermes Agent](https://hermes-agent.nousresearch.com/) locally with **llama.cpp** and a local GGUF model — zero cloud API costs. Optional Claude Code bridge via LiteLLM for coding tasks.
 
@@ -22,9 +23,13 @@ Run [Hermes Agent](https://hermes-agent.nousresearch.com/) locally with **llama.
 curl -fsSL https://raw.githubusercontent.com/KaiFelixBennett/hermes-claude-code-local/main/setup.sh | bash
 ```
 
-**That's it.** The setup script installs Hermes, downloads a GGUF model, starts llama.cpp, and launches Hermes — all in one command.
+**That's it.** The setup script verifies your environment, configures Hermes with llama.cpp, and launches everything in one command.
 
 ---
+
+<p align="center">
+  <img src="images/readme-hero-hybrid-stack.png" alt="Illustration of the hybrid Hermes, Claude Code, LiteLLM, and llama.cpp setup" width="980" />
+</p>
 
 ## What You Get
 
@@ -33,115 +38,172 @@ curl -fsSL https://raw.githubusercontent.com/KaiFelixBennett/hermes-claude-code-
 - **Telegram integration** — control Hermes from any device via Telegram
 - **Zero API costs** — everything runs on your hardware
 - **Self-healing scripts** — LiteLLM restarts automatically if it crashes
+- **Model tuning notes** per GGUF under `docs/models/`
 
 ---
 
 ## Architecture
 
-```
-┌──────────┐     ┌──────────────┐     ┌──────────┐
-│  Hermes  │────▶│   llama.cpp  │◀────│ Your GGUF │
-│  Agent   │     │  (local)     │     │  Model   │
-└──────────┘     └──────────────┘     └──────────┘
-       │
-       │ (coding tasks)
-       ▼
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│Claude Code│────▶│ LiteLLM  │────▶│ llama.cpp│
-│  (local)  │     │  (proxy) │     │ (shared) │
-└──────────┘     └──────────┘     └──────────┘
+The core path looks like this:
+
+`Hermes -> llama.cpp`
+
+and for local Claude Code tasks:
+
+`Hermes -> claude-code skill -> Claude Code -> LiteLLM -> llama.cpp`
+
+```mermaid
+flowchart LR
+  U[User] --> H[Hermes]
+  H --> L1[llama.cpp]
+  H --> S[claude-code skill]
+  S --> C[Claude Code]
+  C --> P[LiteLLM]
+  P --> L2[llama.cpp]
 ```
 
-**Normal chat:** Hermes → llama.cpp directly (fast, no overhead).
-**Coding tasks:** Claude Code → LiteLLM → llama.cpp (Anthropic-compatible API layer).
+### Why This Hybrid Setup?
+
+At first glance, the architecture looks more complicated than just pointing everything straight at one local model. In practice, the split is what makes the system stable:
+
+- **Hermes** talks directly to `llama.cpp` — fewer moving parts, lower overhead, simpler debugging
+- **Claude Code** goes through LiteLLM — it expects Anthropic-style API behavior and is pickier about compatibility
+- The wrapper scripts auto-heal the bridge when LiteLLM is not already running
+
+Read more about [why Hermes talks directly to llama.cpp](#why-hermes-direct) and [why Claude Code uses LiteLLM](#why-claude-code-litellm).
+
+---
+
+## Who This Is For
+
+Use this repo if you want one of these outcomes:
+
+- run Hermes locally against `llama.cpp`
+- test Claude Code against a local model instead of the Anthropic API
+- keep working launch scripts and config in one place
+- reuse the setup later on another machine with minimal changes
+
+---
+
+## Prerequisites
+
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| OS | Windows 10/11 (WSL2) or Linux/macOS | Windows 11 + WSL2 Ubuntu |
+| RAM | 16 GB | 32 GB |
+| Disk | ~10 GB for model + tools | SSD |
+| GPU (optional) | — | AMD Radeon / NVIDIA for faster inference |
+
+You should already have:
+
+- Hermes installed in WSL (or natively on Linux/macOS)
+- `claude` CLI installed (for the Claude Code bridge path)
+- a local GGUF model available on disk
+- a working `llama.cpp` binary
+
+This repo gives you the wiring, launch scripts, and tested configuration. It does not ship model weights or llama.cpp binaries.
 
 ---
 
 ## Setup
 
-### Prerequisites
-
-| Requirement | Windows | Linux / macOS |
-|-------------|---------|---------------|
-| OS | Windows 10/11 with WSL2 | Ubuntu 20.04+, Debian, macOS |
-| GPU (optional) | AMD/NVIDIA for faster inference | AMD/NVIDIA/CPU |
-| RAM | 16 GB minimum (32 GB recommended) | 16 GB minimum |
-| Disk | ~10 GB for model + tools | ~10 GB |
-
 ### Option A: One-Command Setup (Recommended)
 
-The setup script handles everything automatically:
-
-**Windows:**
 ```powershell
 ./setup_hermes_local.ps1
 ```
 
-**Linux / macOS:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/KaiFelixBennett/hermes-claude-code-local/main/setup.sh | bash
+What this script does:
+
+1. Verifies required local files exist
+2. Checks your configured GGUF path in `hermes_config.yaml`
+3. Prompts for a GGUF path if the configured one is missing
+4. Writes the new path back to `model.path`
+5. Starts the normal Hermes launcher
+
+With Claude Code bridge:
+
+```powershell
+./setup_hermes_local.ps1 -WithClaudeBridge
 ```
 
-What the script does:
-1. Checks system requirements (RAM, disk space, WSL2 on Windows)
-2. Downloads Hermes if not installed
-3. Downloads a GGUF model (Qwen3.6-27B by default) or asks for your own path
-4. Starts llama.cpp with the correct backend for your GPU
-5. Launches Hermes connected to your local model
+Config-only (no launch):
 
-### Option B: Manual Setup
-
-If you prefer step-by-step control:
-
-```bash
-# 1. Clone this repo
-git clone https://github.com/KaiFelixBennett/hermes-claude-code-local.git
-cd hermes-claude-code-local
-
-# 2. Install Hermes (if not already installed)
-pip install hermes-agent
-
-# 3. Configure your model path in hermes_config.yaml
-#    Edit model.path to point to your GGUF file
-
-# 4. Start everything
-./setup_hermes_local.ps1      # Windows
-make start                    # Linux / macOS
+```powershell
+./setup_hermes_local.ps1 -SkipLaunch
 ```
+
+### Option B: Manual Start
+
+**Hermes only:**
+```powershell
+./start_hermes.bat
+```
+
+**Hermes + Claude Code bridge:**
+```powershell
+./start_hermes_claude_local.bat
+```
+
+This path checks or starts `llama.cpp`, starts LiteLLM on `127.0.0.1:4000`, launches Hermes, and ensures Claude Code subprocesses use the local gateway.
+
+**Claude Code check without Hermes:**
+```bash
+./claude_local.sh -p 'Reply with exactly OK.' --output-format json
+```
+
+The wrapper auto-starts LiteLLM on demand. Verify success when JSON output contains `modelUsage.qwen-local-anthropic`.
 
 ---
 
-## Usage
+## What This Looks Like In Practice
 
-### Start Hermes (Hermes + llama.cpp only)
+Hermes inspects the current state, switches into the `claude-code` skill when deeper coding work is needed, and delegates through the local Claude Code bridge:
 
-```powershell
-./start_hermes.bat          # Windows
-make hermes                 # Linux
+<p align="center">
+  <img src="images/calling-claude-code-skill-virelia.png" alt="Telegram screenshot showing Hermes loading the claude-code skill and delegating work to Claude Code" width="760" />
+</p>
+
+---
+
+## Telegram Integration
+
+Hermes is not tied to one terminal window — you can control it from Telegram:
+
+- Run Hermes on your local machine or in WSL
+- Keep the model and tooling running in the background
+- Message Hermes from Telegram instead of sitting in front of the terminal
+- Hermes uses the same local stack while you interact from chat
+
+<p align="center">
+	<img src="images/readme-telegram-architecture.png" alt="Telegram and Hermes architecture illustration with direct llama.cpp path and optional Claude Code bridge path" width="980" />
+</p>
+
+```mermaid
+flowchart LR
+	T[Telegram] --> G[Hermes gateway]
+	G --> H[Hermes]
+	H --> L[llama.cpp]
+	H --> C[Claude Code via LiteLLM]
 ```
 
-### Start Hermes + Claude Code Bridge
+### Connect Your Own Telegram Bot
 
-```powershell
-./start_hermes_claude_local.bat   # Windows
-make claude-bridge                # Linux
-```
+The shortest stable setup flow:
 
-### Run Claude Code Locally (without Hermes)
+1. Create a bot with [@BotFather](https://t.me/BotFather)
+2. Get your numeric Telegram user ID
+3. Run `hermes gateway setup` in WSL and choose Telegram
+4. Start the gateway with `hermes gateway`
+5. Send your bot a message and verify Hermes replies
 
-```bash
-./claude_local.sh -p "Your coding task here"
-```
+Official references:
 
-### Unified Entry Point (Makefile)
+- [Hermes Messaging Gateway Overview](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/)
+- [Hermes Telegram Setup](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram)
+- [Hermes Security Guide](https://hermes-agent.nousresearch.com/docs/user-guide/security)
 
-```bash
-make setup          # Full one-command setup
-make start          # Start Hermes + llama.cpp
-make claude-bridge  # Start with Claude Code bridge
-make stop           # Stop all services
-make status         # Check service status
-```
+> **Note:** Telegram group privacy mode is the most common reason bots appear "silent" in groups. If you change privacy mode in BotFather, remove and re-add the bot to the group afterwards.
 
 ---
 
@@ -153,33 +215,20 @@ The main config file is `hermes_config.yaml`. The only values you typically need
 |-------|-------------|---------|
 | `model.path` | Path to your GGUF model file | `E:\models\qwen3.6.gguf` |
 | `model.backend` | GPU backend for llama.cpp | `hip`, `vulkan`, `cuda`, `cpu` |
-| `model.context_length` | Context window size | `65536` (default) |
+| `model.binary_dir` | (optional) Pin a specific llama.cpp build | — |
 
 Everything else — Hermes, LiteLLM, Claude Code — is pre-configured and works out of the box.
 
----
+### Current Verified Defaults
 
-## Model Selection
-
-This repo ships with a tested config for **Qwen3.6-27B-MTP GGUF**. See `docs/models/` for model-specific tuning notes.
-
-To use a different GGUF model:
-1. Download it to your machine
-2. Update `model.path` in `hermes_config.yaml`
-3. Run the setup script again
-
----
-
-## Telegram Integration
-
-Control Hermes from any device via Telegram:
-
-```bash
-hermes gateway setup   # Follow the wizard
-hermes gateway         # Start the gateway
+```text
+ANTHROPIC_BASE_URL=http://127.0.0.1:4000
+ANTHROPIC_AUTH_TOKEN=***
+ANTHROPIC_MODEL=qwen-local-anthropic
+ANTHROPIC_CUSTOM_MODEL_OPTION=qwen-local-anthropic
 ```
 
-Read more in the [official Hermes Telegram docs](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram).
+Model tuning details are documented in `docs/models/qwen3.6-27b-mtp-gguf-llamacpp.md`.
 
 ---
 
@@ -187,14 +236,29 @@ Read more in the [official Hermes Telegram docs](https://hermes-agent.nousresear
 
 | File | Purpose |
 |------|---------|
-| `setup_hermes_local.ps1` | Windows setup wizard (recommended entry point) |
-| `setup.sh` | Linux/macOS one-command setup script |
-| `hermes_config.yaml` | Main config — model path, GPU backend, provider settings |
+| `hermes_config.yaml` | Main Hermes provider and model config |
+| `setup_hermes_local.ps1` | First-run setup wizard (recommended entry point) |
 | `start_hermes.bat` | Quick start Hermes + llama.cpp |
 | `start_hermes_claude_local.bat` | Start with Claude Code bridge |
-| `litellm.proxy.yaml` | LiteLLM proxy config for Claude Code |
-| `claude_local.sh` | Run Claude Code locally (standalone) |
-| `Makefile` | Unified entry point for all platforms |
+| `start_llamacpp.ps1` | Starts llama.cpp from repo config |
+| `start_litellm.ps1` | Starts LiteLLM for the Claude bridge |
+| `claude_local.sh` | Local Claude Code entry point (standalone) |
+| `ensure_claude_local_bridge.sh` | On-demand LiteLLM self-healing wrapper |
+| `litellm.proxy.yaml` | LiteLLM bridge config |
+| `HERMES_README.md` | Deeper operator notes for this setup |
+
+---
+
+## Reusing on Another Machine
+
+This repo does not ship the GGUF model or llama.cpp binaries. Usually only these parts need to change:
+
+1. `model.path` in `hermes_config.yaml`
+2. The installed llama.cpp backend and binary folder
+3. Machine-specific paths to GGUFs or tools
+4. Optional GPU backend tuning
+
+The launch scripts resolve paths dynamically — you typically don't need to edit them manually.
 
 ---
 
@@ -202,15 +266,17 @@ Read more in the [official Hermes Telegram docs](https://hermes-agent.nousresear
 
 ### llama.cpp won't start on Windows
 
-Check that your GPU backend matches your hardware:
-- AMD Radeon → set `model.backend: "hip"` in `hermes_config.yaml`
+Check that your GPU backend matches your hardware in `hermes_config.yaml`:
+
+- AMD Radeon → set `model.backend: "hip"`
 - NVIDIA → set `model.backend: "cuda"` or `"vulkan"`
 - No GPU → set `model.backend: "cpu"` (slower but works)
 
 ### LiteLLM bridge is down
 
 The wrapper scripts auto-heal. If it's still not working:
-```bash
+
+```powershell
 ./start_litellm.ps1   # Windows
 make litellm          # Linux
 ```
@@ -218,9 +284,16 @@ make litellm          # Linux
 ### Hermes can't reach llama.cpp
 
 On Windows with WSL2, make sure mirrored networking is enabled (default in WSL 2.0+). Test from inside WSL:
+
 ```bash
 curl http://127.0.0.1:8080/v1/models
 ```
+
+### Telegram bot appears silent in groups
+
+- Check that privacy mode is disabled in BotFather
+- Remove and re-add the bot to the group after changing settings
+- Hermes can also stay DM-only for the simplest setup
 
 ---
 
