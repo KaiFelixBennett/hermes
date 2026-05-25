@@ -1,11 +1,27 @@
-# Hermes Local Stack — Run Hermes + Claude Code with llama.cpp Locally
+# Hermes Local Stack — Local Agentic Coding with Claude Code, llama.cpp, Zero API Costs
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)]()
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
 [![Hermes Agent](https://img.shields.io/badge/Hermes-Agent-orange)](https://hermes-agent.nousresearch.com/)
 [![Local Inference](https://img.shields.io/badge/Inference-llama.cpp-green)](https://github.com/ggerganov/llama.cpp)
 
-Run [Hermes Agent](https://hermes-agent.nousresearch.com/) locally with **llama.cpp** and a local GGUF model — zero cloud API costs. Optional Claude Code bridge via LiteLLM for coding tasks.
+**Local agentic coding with [Hermes Agent](https://hermes-agent.nousresearch.com/) + llama.cpp — autonomous multi-step tasks, tool use, and file edits on your own hardware.** Zero API costs. No data leaves your machine. Optional Claude Code bridge via LiteLLM.
+
+---
+
+<p align="center">
+  <strong>Real session &nbsp;·&nbsp; 4 hours &nbsp;·&nbsp; 7,256,671 tokens</strong><br/>
+  <sub>Same session with Claude Opus 4.7 would have cost <strong>~$94.34</strong> &nbsp;·&nbsp; Cost with this stack: <strong>less than a coffee</strong></sub>
+</p>
+
+<p align="center">
+  <img src="images/Session%20Status.png" alt="Hermes /status: 7,256,671 tokens, 4-hour session" width="420" />
+</p>
+<p align="center">
+  <img src="images/Kosten%20mit%20Opus.png" alt="Hermes calculating ~$94.34 equivalent cost for Claude Opus 4.7" width="420" />
+</p>
+
+<p align="center"><em>Session title: "Claude Code Migration im Hintergrund läuft #7" — Hermes autonomously ran a multi-step code migration in the background, 7th iteration, while the phone stayed in my pocket.</em></p>
 
 ---
 
@@ -33,10 +49,12 @@ curl -fsSL https://raw.githubusercontent.com/KaiFelixBennett/hermes-claude-code-
 
 ## What You Get
 
+- **Agentic coding, fully local** — Hermes plans multi-step tasks, calls tools (web search, file edits, browser), and executes autonomously without cloud round-trips
 - **Hermes Agent** running locally with llama.cpp as the inference engine
 - **Claude Code bridge** via LiteLLM (optional) — Claude Code talks to your local model instead of Anthropic's API
-- **Telegram integration** — control Hermes from any device via Telegram
+- **Telegram integration** — control Hermes from any device via Telegram, including voice messages
 - **Zero API costs** — everything runs on your hardware
+- **MTP / speculative decoding** — faster inference with Qwen3.6-27B-MTP GGUF out of the box
 - **Self-healing scripts** — LiteLLM restarts automatically if it crashes
 - **Model tuning notes** per GGUF under `docs/models/`
 
@@ -70,7 +88,26 @@ At first glance, the architecture looks more complicated than just pointing ever
 - **Claude Code** goes through LiteLLM — it expects Anthropic-style API behavior and is pickier about compatibility
 - The wrapper scripts auto-heal the bridge when LiteLLM is not already running
 
-Read more about [why Hermes talks directly to llama.cpp](#why-hermes-direct) and [why Claude Code uses LiteLLM](#why-claude-code-litellm).
+**The honest trade-off on Claude Code:** Claude Code is a powerful tool but has a real runtime overhead — system prompt, tool schemas, and scaffolding can consume 60k+ tokens before your first message on a 64k context window. With Hermes talking directly to llama.cpp, that overhead disappears. Claude Code becomes worthwhile again once you run 128k+ context reliably; until then, Hermes direct is the better default for agent loops.
+
+### Why llama.cpp and not Ollama?
+
+Ollama has a friendlier setup experience, but llama.cpp was chosen here for three reasons:
+1. **MTP / speculative decoding** support for the Qwen3.6-27B-MTP GGUF (measurable speed boost)
+2. **Fine-grained control** over GPU backends (HIP, Vulkan, CUDA) and context windows
+3. **Direct API compatibility** — llama.cpp speaks the OpenAI `/v1` format natively without an extra translation layer
+
+If you prefer Ollama, the LiteLLM bridge in this stack can route to an Ollama endpoint with a one-line config change.
+
+### Why Dense over MoE for Agentic Tasks?
+
+MoE models (e.g. Qwen 35B-A3B) activate only a fraction of parameters per token — great for throughput, but they can drift on long agent loops where consistent multi-step reasoning matters. A dense 27B model activates all parameters on every step:
+
+- **More stable over long task chains** — fewer reasoning errors when Hermes is 5–10 tool calls deep
+- **Less hallucination on sequential code edits** — the model holds intent across the full loop
+- **Verified in practice** — the 4-hour session was iteration #7 of an autonomous code migration, 9+ user turns, running unattended via Telegram
+
+The trade-off: MoE models can handle larger context windows faster on the same hardware. Once you can run 128k+ context reliably on your setup, re-evaluating a larger MoE makes sense.
 
 ---
 
@@ -78,7 +115,8 @@ Read more about [why Hermes talks directly to llama.cpp](#why-hermes-direct) and
 
 Use this repo if you want one of these outcomes:
 
-- run Hermes locally against `llama.cpp`
+- run autonomous agentic coding tasks locally with zero API costs
+- control Hermes from Telegram while it works in the background
 - test Claude Code against a local model instead of the Anthropic API
 - keep working launch scripts and config in one place
 - reuse the setup later on another machine with minimal changes
@@ -92,14 +130,16 @@ Use this repo if you want one of these outcomes:
 | OS | Windows 10/11 (WSL2) or Linux/macOS | Windows 11 + WSL2 Ubuntu |
 | RAM | 16 GB | 32 GB |
 | Disk | ~10 GB for model + tools | SSD |
-| GPU (optional) | — | AMD Radeon / NVIDIA for faster inference |
+| GPU | **Strongly recommended** | AMD Radeon (ROCm/HIP) or NVIDIA (CUDA) |
+
+> **On GPU:** For the Qwen3.6-27B Q4_K_M model used here, plan for **24+ GB VRAM** — the model weights alone are ~14.5 GB, and the KV cache at 64k context adds several GB on top. 16 GB VRAM will be tight or require CPU offload (noticeably slower). CPU-only works but is very slow for interactive agent loops; consider a 7B Q4 model if GPU is not available.
 
 You should already have:
 
-- Hermes installed in WSL (or natively on Linux/macOS)
+- Hermes installed in WSL (Windows) or natively (Linux/macOS)
 - `claude` CLI installed (for the Claude Code bridge path)
 - a local GGUF model available on disk
-- a working `llama.cpp` binary
+- a working `llama.cpp` binary (or let `setup.sh` install it)
 
 This repo gives you the wiring, launch scripts, and tested configuration. It does not ship model weights or llama.cpp binaries.
 
@@ -109,39 +149,58 @@ This repo gives you the wiring, launch scripts, and tested configuration. It doe
 
 ### Option A: One-Command Setup (Recommended)
 
+**Windows:**
 ```powershell
 ./setup_hermes_local.ps1
 ```
 
-What this script does:
+**Linux / macOS:**
+```bash
+bash setup.sh
+```
 
-1. Verifies required local files exist
-2. Checks your configured GGUF path in `hermes_config.yaml`
-3. Prompts for a GGUF path if the configured one is missing
-4. Writes the new path back to `model.path`
-5. Starts the normal Hermes launcher
+What these scripts do:
+
+1. Verify required local files exist
+2. Check your configured GGUF path in `hermes_config.yaml`
+3. Prompt for a GGUF path if the configured one is missing
+4. Write the new path back to `model.path`
+5. Start the normal Hermes launcher
 
 With Claude Code bridge:
 
 ```powershell
+# Windows
 ./setup_hermes_local.ps1 -WithClaudeBridge
+
+# Linux / macOS
+bash setup.sh --with-claude-bridge
 ```
 
 Config-only (no launch):
 
 ```powershell
+# Windows
 ./setup_hermes_local.ps1 -SkipLaunch
+
+# Linux / macOS
+bash setup.sh --skip-launch
 ```
 
 ### Option B: Manual Start
 
 **Hermes only:**
 ```powershell
+# Windows
 ./start_hermes.bat
+
+# Linux / macOS
+bash start_hermes.sh
 ```
 
 **Hermes + Claude Code bridge:**
 ```powershell
+# Windows
 ./start_hermes_claude_local.bat
 ```
 
@@ -277,8 +336,11 @@ Check that your GPU backend matches your hardware in `hermes_config.yaml`:
 The wrapper scripts auto-heal. If it's still not working:
 
 ```powershell
-./start_litellm.ps1   # Windows
-make litellm          # Linux
+# Windows
+./start_litellm.ps1
+
+# Linux / macOS
+make litellm
 ```
 
 ### Hermes can't reach llama.cpp
@@ -304,6 +366,16 @@ Local LLMs are great for privacy and cost control, but Claude Code expects an An
 - **Hermes** talks directly to llama.cpp (minimal overhead)
 - **Claude Code** goes through LiteLLM (Anthropic API compatibility layer)
 - Both share the same local model — no duplicate inference servers needed
+
+A real session on an AMD Radeon AI PRO R9700 (32 GB VRAM) ran **7 million tokens for €0** across an evening of agent-driven coding. The architecture described here is exactly what was running.
+
+---
+
+## Contributing
+
+Issues, PRs, and config contributions for different hardware setups (NVIDIA CUDA, Apple Silicon, CPU-only builds) are very welcome.
+
+If this stack saves you money or solves a problem, a ⭐ on the repo helps others find it.
 
 ---
 
