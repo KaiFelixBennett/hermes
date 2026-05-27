@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/KaiFelixBennett/hermes-claude-code-
 ---
 
 <p align="center">
-  <img src="images/readme-hero-hybrid-stack.png" alt="Illustration of the hybrid Hermes, Claude Code, LiteLLM, and llama.cpp setup" width="980" />
+  <img src="images/readme-hero-hybrid-stack.png" alt="Illustration of the hybrid Hermes, Claude Code, LiteLLM, and llama.cpp setup" width="100%" />
 </p>
 
 ## What You Get
@@ -73,15 +73,9 @@ and for local Claude Code tasks:
 
 `Hermes -> claude-code skill -> Claude Code -> LiteLLM -> llama.cpp`
 
-```mermaid
-flowchart LR
-  U[User] --> H[Hermes]
-  H --> L1[llama.cpp]
-  H --> S[claude-code skill]
-  S --> C[Claude Code]
-  C --> P[LiteLLM]
-  P --> L2[llama.cpp]
-```
+<p align="center">
+  <img src="images/readme-architecture-diagram.svg" alt="Architecture diagram showing the direct Hermes to llama.cpp path and the optional Claude Code to LiteLLM bridge path" width="100%" />
+</p>
 
 ### Why This Hybrid Setup?
 
@@ -223,7 +217,7 @@ The wrapper auto-starts LiteLLM on demand. Verify success when JSON output conta
 Hermes inspects the current state, switches into the `claude-code` skill when deeper coding work is needed, and delegates through the local Claude Code bridge:
 
 <p align="center">
-  <img src="images/calling-claude-code-skill-virelia.png" alt="Telegram screenshot showing Hermes loading the claude-code skill and delegating work to Claude Code" width="760" />
+  <img src="images/calling-claude-code-skill-virelia.png" alt="Telegram screenshot showing Hermes loading the claude-code skill and delegating work to Claude Code" width="100%" />
 </p>
 
 ---
@@ -238,16 +232,8 @@ Hermes is not tied to one terminal window — you can control it from Telegram:
 - Hermes uses the same local stack while you interact from chat
 
 <p align="center">
-	<img src="images/readme-telegram-architecture.png" alt="Telegram and Hermes architecture illustration with direct llama.cpp path and optional Claude Code bridge path" width="980" />
+  <img src="images/readme-telegram-architecture.png" alt="Telegram and Hermes architecture illustration with direct llama.cpp path and optional Claude Code bridge path" width="100%" />
 </p>
-
-```mermaid
-flowchart LR
-	T[Telegram] --> G[Hermes gateway]
-	G --> H[Hermes]
-	H --> L[llama.cpp]
-	H --> C[Claude Code via LiteLLM]
-```
 
 ### Connect Your Own Telegram Bot
 
@@ -395,7 +381,6 @@ This project exists because local LLMs are finally good enough to replace cloud 
 - [r/ClaudeAI](https://www.reddit.com/r/ClaudeAI/) — for Claude Code users
 - [Hermes Discord](https://hermes-agent.nousresearch.com/docs/) — for Hermes-specific questions
 
-[![Star History Chart](https://api.star-history.com/svg?repos=KaiFelixBennett/hermes-claude-code-local&type=Date)](https://star-history.com/#KaiFelixBennett/hermes-claude-code-local&Date)
 
 ---
 
